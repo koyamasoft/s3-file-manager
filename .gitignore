@@ -1,0 +1,4 @@
+node_modules/
+dist/
+.s3-work/
+.env

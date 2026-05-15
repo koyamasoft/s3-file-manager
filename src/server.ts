@@ -1,0 +1,321 @@
+#!/usr/bin/env node
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { existsSync, readFileSync } from "node:fs";
+import { extname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { getConfig, type GlobalOptions } from "./config.js";
+import { isTextKey } from "./file.js";
+import {
+  createBucket,
+  createS3Client,
+  downloadObject,
+  headObject,
+  listBuckets,
+  listObjects,
+  uploadObject,
+} from "./s3.js";
+
+type ServerOptions = GlobalOptions & {
+  port: number;
+};
+
+type JsonValue =
+  | null
+  | string
+  | number
+  | boolean
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
+const MIME_TYPES: Record<string, string> = {
+  ".css": "text/css; charset=utf-8",
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+};
+
+function parseArgs(argv: string[]): ServerOptions {
+  const options: ServerOptions = { yes: false, port: 5174 };
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const value = argv[i];
+    const next = () => {
+      const nextValue = argv[++i];
+      if (!nextValue) throw new Error(`${value} requires a value.`);
+      return nextValue;
+    };
+
+    switch (value) {
+      case "--env":
+        options.envFile = next();
+        break;
+      case "--bucket":
+        options.bucket = next();
+        break;
+      case "--endpoint":
+        options.endpoint = next();
+        break;
+      case "--region":
+        options.region = next();
+        break;
+      case "--workdir":
+        options.workDir = next();
+        break;
+      case "--port":
+        options.port = Number(next());
+        if (!Number.isInteger(options.port) || options.port <= 0) {
+          throw new Error("--port requires a positive integer.");
+        }
+        break;
+      default:
+        throw new Error(`Unknown option: ${value}`);
+    }
+  }
+
+  return options;
+}
+
+function webRoot(): string {
+  const distDir = fileURLToPath(new URL(".", import.meta.url));
+  const fromProjectRoot = resolve(process.cwd(), "src/web");
+  if (existsSync(fromProjectRoot)) return fromProjectRoot;
+  return resolve(distDir, "../src/web");
+}
+
+function sendJson(response: ServerResponse, status: number, body: JsonValue): void {
+  response.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+  });
+  response.end(JSON.stringify(body));
+}
+
+function sendError(response: ServerResponse, status: number, error: unknown): void {
+  sendJson(response, status, {
+    error: error instanceof Error ? error.message : String(error),
+  });
+}
+
+function readRequestBody(request: IncomingMessage): Promise<string> {
+  return new Promise((resolveBody, reject) => {
+    const chunks: Buffer[] = [];
+    request.on("data", (chunk: Buffer) => {
+      chunks.push(chunk);
+      if (Buffer.concat(chunks).length > 10 * 1024 * 1024) {
+        request.destroy(new Error("Request body is too large."));
+      }
+    });
+    request.on("end", () => resolveBody(Buffer.concat(chunks).toString("utf8")));
+    request.on("error", reject);
+  });
+}
+
+function formatObjectSize(size?: number): string {
+  if (size == null) return "-";
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KiB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MiB`;
+}
+
+function bucketFromRequest(requestUrl: URL, fallback: string): string {
+  return requestUrl.searchParams.get("bucket") || fallback;
+}
+
+function serveStatic(requestUrl: URL, response: ServerResponse): void {
+  const root = webRoot();
+  const rawPath = requestUrl.pathname === "/" ? "/index.html" : requestUrl.pathname;
+  const filePath = resolve(root, `.${decodeURIComponent(rawPath)}`);
+
+  if (!filePath.startsWith(root) || !existsSync(filePath)) {
+    response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    response.end("Not found");
+    return;
+  }
+
+  const ext = extname(filePath);
+  response.writeHead(200, {
+    "Content-Type": MIME_TYPES[ext] ?? "application/octet-stream",
+    "Cache-Control": "no-store",
+  });
+  response.end(readFileSync(filePath));
+}
+
+async function main(): Promise<void> {
+  const options = parseArgs(process.argv.slice(2));
+  const config = getConfig(options, false);
+  const client = createS3Client(config);
+
+  const server = createServer(async (request, response) => {
+    const host = request.headers.host ?? "127.0.0.1";
+    const requestUrl = new URL(request.url ?? "/", `http://${host}`);
+
+    try {
+      if (requestUrl.pathname === "/api/config") {
+        sendJson(response, 200, {
+          bucket: config.bucket ?? null,
+          region: config.region,
+          endpoint: config.endpoint ?? null,
+          forcePathStyle: config.forcePathStyle,
+          isAwsS3: !config.endpoint,
+        });
+        return;
+      }
+
+      if (requestUrl.pathname === "/api/buckets") {
+        if (request.method === "POST") {
+          const rawBody = await readRequestBody(request);
+          const parsed = JSON.parse(rawBody) as { bucket?: string };
+          const bucket = parsed.bucket?.trim();
+          if (!bucket) throw new Error("bucket is required.");
+          await createBucket(client, bucket, config.region, !!config.endpoint);
+          sendJson(response, 200, { bucket });
+          return;
+        }
+
+        const buckets = await listBuckets(client);
+        sendJson(response, 200, {
+          buckets: buckets.map((bucket) => ({
+            name: bucket.Name ?? "",
+            creationDate: bucket.CreationDate?.toISOString() ?? null,
+          })).filter((bucket) => bucket.name),
+        });
+        return;
+      }
+
+      if (requestUrl.pathname === "/api/list") {
+        const prefix = requestUrl.searchParams.get("prefix") ?? "";
+        const bucket = bucketFromRequest(requestUrl, config.bucket ?? "");
+        if (!bucket) throw new Error("bucket is required.");
+        const objects = await listObjects(client, bucket, prefix);
+        sendJson(response, 200, {
+          objects: objects.map((object) => ({
+            key: object.Key ?? "",
+            size: object.Size ?? 0,
+            sizeLabel: formatObjectSize(object.Size),
+            lastModified: object.LastModified?.toISOString() ?? null,
+          })),
+        });
+        return;
+      }
+
+      if (requestUrl.pathname === "/api/object") {
+        const key = requestUrl.searchParams.get("key");
+        if (!key) throw new Error("key is required.");
+        const bucket = bucketFromRequest(requestUrl, config.bucket ?? "");
+        if (!bucket) throw new Error("bucket is required.");
+
+        const { body, metadata } = await downloadObject(client, bucket, key);
+        const text = isTextKey(key, metadata.contentType);
+        sendJson(response, 200, {
+          metadata,
+          text,
+          content: text ? Buffer.from(body).toString("utf8") : null,
+        });
+        return;
+      }
+
+      if (requestUrl.pathname === "/api/raw") {
+        const key = requestUrl.searchParams.get("key");
+        if (!key) throw new Error("key is required.");
+        const bucket = bucketFromRequest(requestUrl, config.bucket ?? "");
+        if (!bucket) throw new Error("bucket is required.");
+
+        const { body, metadata } = await downloadObject(client, bucket, key);
+        response.writeHead(200, {
+          "Content-Type": metadata.contentType ?? "application/octet-stream",
+          "Cache-Control": "no-store",
+        });
+        response.end(Buffer.from(body));
+        return;
+      }
+
+      if (requestUrl.pathname === "/api/save") {
+        if (request.method !== "POST") {
+          response.writeHead(405, { Allow: "POST" });
+          response.end();
+          return;
+        }
+
+        const rawBody = await readRequestBody(request);
+        const parsed = JSON.parse(rawBody) as {
+          key?: string;
+          content?: string;
+          etag?: string;
+          force?: boolean;
+          contentType?: string;
+          bucket?: string;
+          create?: boolean;
+        };
+        if (!parsed.key) throw new Error("key is required.");
+        if (typeof parsed.content !== "string") throw new Error("content is required.");
+
+        const bucket = parsed.bucket || config.bucket;
+        if (!bucket) throw new Error("bucket is required.");
+        const current = await headObject(client, bucket, parsed.key).catch((error: unknown) => {
+          const namedError = error as { name?: string; $metadata?: { httpStatusCode?: number } };
+          if (
+            namedError.name === "NotFound" ||
+            namedError.name === "NoSuchKey" ||
+            namedError.$metadata?.httpStatusCode === 404
+          ) {
+            return null;
+          }
+          throw error;
+        });
+
+        if (parsed.create && current && !parsed.force) {
+          sendJson(response, 409, {
+            error: "Object already exists.",
+            current,
+          });
+          return;
+        }
+
+        if (!parsed.create && !current) {
+          sendJson(response, 404, { error: "Object does not exist." });
+          return;
+        }
+
+        if (!parsed.force && parsed.etag && current?.etag && parsed.etag !== current.etag) {
+          sendJson(response, 409, {
+            error: "Remote object changed after it was opened.",
+            current,
+          });
+          return;
+        }
+
+        await uploadObject(
+          client,
+          bucket,
+          parsed.key,
+          Buffer.from(parsed.content, "utf8"),
+          parsed.contentType ?? current?.contentType,
+        );
+        const metadata = await headObject(client, bucket, parsed.key);
+        sendJson(response, 200, { metadata });
+        return;
+      }
+
+      if (requestUrl.pathname.startsWith("/api/")) {
+        sendJson(response, 404, { error: "API not found." });
+        return;
+      }
+
+      serveStatic(requestUrl, response);
+    } catch (error) {
+      sendError(response, 500, error);
+    }
+  });
+
+  server.listen(options.port, "127.0.0.1", () => {
+    console.log(`S3 File Manager Web UI: http://127.0.0.1:${options.port}`);
+    console.log(`Bucket: ${config.bucket ?? "(select in Web UI)"}`);
+    console.log(`Endpoint: ${config.endpoint ?? "AWS S3"}`);
+  });
+}
+
+main().catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+});

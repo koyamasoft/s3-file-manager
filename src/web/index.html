@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>S3 File Manager</title>
+    <link rel="stylesheet" href="./style.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <header class="brand">
+          <div>
+            <h1>S3 File Manager</h1>
+            <p id="connectionLabel">接続確認中</p>
+          </div>
+          <div class="brand-actions">
+            <button id="newBucketButton" class="icon-button" type="button" title="新規バケット" aria-label="新規バケット">□</button>
+            <button id="newButton" class="icon-button" type="button" title="新規ファイル" aria-label="新規ファイル">＋</button>
+            <button id="refreshButton" class="icon-button" type="button" title="再読み込み" aria-label="再読み込み">↻</button>
+          </div>
+        </header>
+
+        <form id="prefixForm" class="prefix-form">
+          <label for="bucketSelect">Bucket</label>
+          <div class="bucket-row">
+            <select id="bucketSelect" name="bucket"></select>
+          </div>
+
+          <label for="prefixInput">Prefix</label>
+          <div class="inline-row">
+            <input id="prefixInput" name="prefix" type="text" placeholder="logs/">
+            <button type="submit">検索</button>
+          </div>
+        </form>
+
+        <div class="object-list-header">
+          <span>Objects</span>
+          <span id="objectCount">0</span>
+        </div>
+        <ul id="objectList" class="object-list"></ul>
+      </aside>
+
+      <main class="workspace">
+        <section class="topbar">
+          <div class="selected-heading">
+            <span id="modeBadge" class="badge">未選択</span>
+            <h2 id="selectedKey">ファイルを選択</h2>
+          </div>
+          <div class="actions">
+            <button id="diffButton" type="button" disabled>差分</button>
+            <button id="saveButton" type="button" disabled>アップロード</button>
+          </div>
+        </section>
+
+        <section id="warningBanner" class="warning hidden"></section>
+
+        <section class="content-grid">
+          <div class="editor-pane">
+            <textarea id="editor" spellcheck="false" disabled></textarea>
+            <div id="envPane" class="env-pane hidden">
+              <div class="env-toolbar">
+                <button id="addEnvRowButton" type="button">変数を追加</button>
+              </div>
+              <div id="envRows" class="env-rows"></div>
+            </div>
+            <div id="previewPane" class="preview-pane hidden"></div>
+          </div>
+
+          <aside class="meta-pane">
+            <dl>
+              <div>
+                <dt>Bucket</dt>
+                <dd id="metaBucket">-</dd>
+              </div>
+              <div>
+                <dt>Content-Type</dt>
+                <dd id="metaContentType">-</dd>
+              </div>
+              <div>
+                <dt>Size</dt>
+                <dd id="metaSize">-</dd>
+              </div>
+              <div>
+                <dt>ETag</dt>
+                <dd id="metaEtag">-</dd>
+              </div>
+              <div>
+                <dt>LastModified</dt>
+                <dd id="metaLastModified">-</dd>
+              </div>
+            </dl>
+          </aside>
+        </section>
+
+        <section id="diffPane" class="diff-pane hidden">
+          <div class="diff-header">
+            <h3>差分</h3>
+            <button id="closeDiffButton" class="icon-button" type="button" title="閉じる" aria-label="閉じる">×</button>
+          </div>
+          <pre id="diffOutput"></pre>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>

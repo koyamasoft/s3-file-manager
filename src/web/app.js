@@ -10,6 +10,7 @@ const state = {
   isNew: false,
   isEnvMode: false,
   envRows: [],
+  canUseEnvMode: false,
 };
 
 const elements = {
@@ -30,6 +31,7 @@ const elements = {
   envRows: document.querySelector("#envRows"),
   addEnvRowButton: document.querySelector("#addEnvRowButton"),
   previewPane: document.querySelector("#previewPane"),
+  toggleEnvModeButton: document.querySelector("#toggleEnvModeButton"),
   saveButton: document.querySelector("#saveButton"),
   diffButton: document.querySelector("#diffButton"),
   diffPane: document.querySelector("#diffPane"),
@@ -146,6 +148,11 @@ function setMode(mode) {
   }
 }
 
+function updateEnvModeButton() {
+  elements.toggleEnvModeButton.disabled = !state.canUseEnvMode;
+  elements.toggleEnvModeButton.textContent = state.isEnvMode ? "テキスト編集" : "env編集";
+}
+
 function isEnvKey(key) {
   const name = key.split("/").pop()?.toLowerCase() ?? "";
   return name === ".env" || name.startsWith(".env.") || name.endsWith(".env");
@@ -247,6 +254,7 @@ function showTextEditor(content) {
   elements.editor.classList.remove("hidden");
   elements.envPane.classList.add("hidden");
   elements.previewPane.classList.add("hidden");
+  updateEnvModeButton();
 }
 
 function showEnvEditor(content) {
@@ -258,6 +266,7 @@ function showEnvEditor(content) {
   elements.previewPane.classList.add("hidden");
   elements.envPane.classList.remove("hidden");
   renderEnvRows();
+  updateEnvModeButton();
 }
 
 function renderPreview(key, metadata) {
@@ -349,6 +358,7 @@ function clearSelection() {
   state.isNew = false;
   state.isEnvMode = false;
   state.envRows = [];
+  state.canUseEnvMode = false;
   elements.selectedKey.textContent = "ファイルを選択";
   elements.editor.value = "";
   elements.editor.disabled = true;
@@ -359,6 +369,7 @@ function clearSelection() {
   elements.previewPane.replaceChildren();
   elements.saveButton.disabled = true;
   elements.diffButton.disabled = true;
+  elements.toggleEnvModeButton.disabled = true;
   elements.diffPane.classList.add("hidden");
   setMetadata(null);
   setMode(null);
@@ -368,12 +379,14 @@ async function openObject(key) {
   state.isNew = false;
   state.isEnvMode = false;
   state.envRows = [];
+  state.canUseEnvMode = isEnvKey(key);
   state.selectedKey = key;
   elements.selectedKey.textContent = key;
   elements.editor.value = "読み込み中...";
   elements.editor.disabled = true;
   elements.saveButton.disabled = true;
   elements.diffButton.disabled = true;
+  elements.toggleEnvModeButton.disabled = !state.canUseEnvMode;
   elements.diffPane.classList.add("hidden");
   elements.previewPane.classList.add("hidden");
   elements.envPane.classList.add("hidden");
@@ -400,16 +413,19 @@ async function openObject(key) {
     }
     elements.saveButton.disabled = false;
     elements.diffButton.disabled = false;
+    updateEnvModeButton();
     return;
   }
 
   state.originalContent = "";
   state.isEnvMode = false;
+  state.canUseEnvMode = false;
   elements.editor.classList.add("hidden");
   elements.envPane.classList.add("hidden");
   elements.previewPane.classList.remove("hidden");
   renderPreview(key, state.metadata);
   setMode("binary");
+  updateEnvModeButton();
 }
 
 async function saveObject(force = false) {
@@ -476,6 +492,7 @@ function createNewObject() {
   state.isNew = true;
   state.isEnvMode = false;
   state.envRows = [];
+  state.canUseEnvMode = isEnvKey(key);
   elements.selectedKey.textContent = key;
   if (isEnvKey(key)) {
     showEnvEditor("");
@@ -487,6 +504,7 @@ function createNewObject() {
   elements.previewPane.replaceChildren();
   elements.saveButton.disabled = false;
   elements.diffButton.disabled = false;
+  elements.toggleEnvModeButton.disabled = !state.canUseEnvMode;
   elements.diffPane.classList.add("hidden");
   setMetadata({
     contentType: state.currentContentType,
@@ -494,6 +512,18 @@ function createNewObject() {
   });
   renderObjectList();
   if (!state.isEnvMode) elements.editor.focus();
+}
+
+function toggleEnvMode() {
+  if (!state.canUseEnvMode) return;
+
+  if (state.isEnvMode) {
+    showTextEditor(serializeEnvRows());
+    setMode("text");
+  } else {
+    showEnvEditor(elements.editor.value);
+    setMode("env");
+  }
 }
 
 function isValidBucketName(name) {
@@ -591,6 +621,8 @@ elements.addEnvRowButton.addEventListener("click", () => {
   state.envRows.push({ type: "entry", key: "", value: "" });
   renderEnvRows();
 });
+
+elements.toggleEnvModeButton.addEventListener("click", toggleEnvMode);
 
 elements.saveButton.addEventListener("click", async () => {
   if (!window.confirm("この内容をS3へアップロードしますか？")) return;

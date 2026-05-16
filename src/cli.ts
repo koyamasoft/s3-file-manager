@@ -11,6 +11,7 @@ import {
   openEditor,
   readLocalFile,
   runDiff,
+  safePathFor,
   writeFileEnsured,
 } from "./file.js";
 import {
@@ -273,7 +274,7 @@ async function main(): Promise<void> {
         throw new Error("Refusing to edit binary-like object.");
       }
 
-      const beforePath = join(config.workDir, "before", key);
+      const beforePath = safePathFor(config.workDir, "before", key);
       writeFileEnsured(beforePath, readLocalFile(path));
       openEditor(config.editor, path);
       const diffStatus = runDiff(beforePath, path);

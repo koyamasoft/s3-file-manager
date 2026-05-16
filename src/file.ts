@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
@@ -57,8 +57,20 @@ export function contentTypeFor(path: string): string {
   return CONTENT_TYPES[extensionOf(path)] ?? "application/octet-stream";
 }
 
+export function safePathFor(workDir: string, scope: string, key: string): string {
+  const root = resolve(workDir, scope);
+  const path = resolve(root, key);
+  const relativePath = relative(root, path);
+
+  if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
+    throw new Error(`S3 key cannot be written outside the work directory: ${key}`);
+  }
+
+  return path;
+}
+
 export function localPathFor(workDir: string, key: string): string {
-  return join(workDir, "objects", key);
+  return safePathFor(workDir, "objects", key);
 }
 
 export function metadataPathFor(workDir: string, key: string): string {

@@ -11,6 +11,9 @@ const state = {
   isEnvMode: false,
   envRows: [],
   canUseEnvMode: false,
+  csrfToken: null,
+  allowWrite: false,
+  allowCreateBucket: false,
 };
 
 const elements = {
@@ -63,7 +66,13 @@ function showToast(message, type = "info") {
 }
 
 async function requestJson(url, options) {
-  const response = await fetch(url, options);
+  const method = (options?.method ?? "GET").toUpperCase();
+  const headers = new Headers(options?.headers ?? {});
+  if (method !== "GET" && state.csrfToken) {
+    headers.set("X-S3FM-CSRF", state.csrfToken);
+  }
+
+  const response = await fetch(url, { ...options, headers });
   const json = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new Error(json.error || `HTTP ${response.status}`);
@@ -81,6 +90,13 @@ function setWarning(message) {
 
 function updateConnectionLabel() {
   elements.connectionLabel.textContent = `${state.selectedBucket ?? "バケット未選択"} · ${state.config?.endpoint ?? "AWS S3"}`;
+}
+
+function updateWriteControls() {
+  elements.newButton.disabled = !state.allowWrite;
+  elements.newBucketButton.disabled = !state.allowCreateBucket;
+  elements.saveButton.disabled = !state.allowWrite || !state.selectedKey || (!state.metadata && !state.isNew);
+  elements.addEnvRowButton.disabled = !state.allowWrite;
 }
 
 function setMetadata(metadata) {
@@ -215,6 +231,7 @@ function renderEnvRows() {
       key.type = "text";
       key.placeholder = "KEY";
       key.value = row.key;
+      key.disabled = !state.allowWrite;
       key.addEventListener("input", () => {
         row.key = key.value;
       });
@@ -223,6 +240,7 @@ function renderEnvRows() {
       value.type = "text";
       value.placeholder = "value";
       value.value = row.value;
+      value.disabled = !state.allowWrite;
       value.addEventListener("input", () => {
         row.value = value.value;
       });
@@ -236,6 +254,7 @@ function renderEnvRows() {
     remove.title = "削除";
     remove.setAttribute("aria-label", "削除");
     remove.textContent = "×";
+    remove.disabled = !state.allowWrite;
     remove.addEventListener("click", () => {
       state.envRows.splice(index, 1);
       renderEnvRows();
@@ -250,11 +269,12 @@ function showTextEditor(content) {
   state.isEnvMode = false;
   state.envRows = [];
   elements.editor.value = content;
-  elements.editor.disabled = false;
+  elements.editor.disabled = !state.allowWrite;
   elements.editor.classList.remove("hidden");
   elements.envPane.classList.add("hidden");
   elements.previewPane.classList.add("hidden");
   updateEnvModeButton();
+  updateWriteControls();
 }
 
 function showEnvEditor(content) {
@@ -267,13 +287,19 @@ function showEnvEditor(content) {
   elements.envPane.classList.remove("hidden");
   renderEnvRows();
   updateEnvModeButton();
+  updateWriteControls();
+}
+
+function isPreviewImageType(contentType) {
+  const normalized = contentType.toLowerCase().split(";")[0].trim();
+  return ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(normalized);
 }
 
 function renderPreview(key, metadata) {
   elements.previewPane.replaceChildren();
   const contentType = metadata?.contentType ?? "";
 
-  if (contentType.startsWith("image/")) {
+  if (isPreviewImageType(contentType)) {
     const image = document.createElement("img");
     image.alt = key;
     const params = new URLSearchParams({
@@ -313,9 +339,16 @@ function diffLines(before, after) {
 async function loadConfig() {
   state.config = await requestJson("/api/config");
   state.selectedBucket = state.config.bucket ?? null;
+  state.csrfToken = state.config.csrfToken ?? null;
+  state.allowWrite = !!state.config.allowWrite;
+  state.allowCreateBucket = !!state.config.allowCreateBucket;
   updateConnectionLabel();
+  updateWriteControls();
   if (state.config.isAwsS3) {
     setWarning("AWS S3 に接続しています。アップロード前に対象キーを確認してください。");
+  }
+  if (!state.allowWrite) {
+    showToast("読み取り専用で起動しています。保存するには --allow-write を付けて起動してください。");
   }
 }
 
@@ -373,6 +406,7 @@ function clearSelection() {
   elements.diffPane.classList.add("hidden");
   setMetadata(null);
   setMode(null);
+  updateWriteControls();
 }
 
 async function openObject(key) {
@@ -411,7 +445,7 @@ async function openObject(key) {
       showTextEditor(state.originalContent);
       setMode("text");
     }
-    elements.saveButton.disabled = false;
+    elements.saveButton.disabled = !state.allowWrite;
     elements.diffButton.disabled = false;
     updateEnvModeButton();
     return;
@@ -430,6 +464,10 @@ async function openObject(key) {
 
 async function saveObject(force = false) {
   if (!state.selectedKey || (!state.metadata && !state.isNew)) return;
+  if (!state.allowWrite) {
+    showToast("読み取り専用で起動しています。保存するには --allow-write を付けて起動してください。", "error");
+    return;
+  }
 
   const body = {
     key: state.selectedKey,
@@ -475,6 +513,10 @@ function normalizeNewKey(input, prefix) {
 }
 
 function createNewObject() {
+  if (!state.allowWrite) {
+    showToast("読み取り専用で起動しています。保存するには --allow-write を付けて起動してください。", "error");
+    return;
+  }
   if (!state.selectedBucket) {
     showToast("バケットを選択してください。", "error");
     return;
@@ -502,7 +544,7 @@ function createNewObject() {
     setMode("text");
   }
   elements.previewPane.replaceChildren();
-  elements.saveButton.disabled = false;
+  elements.saveButton.disabled = !state.allowWrite;
   elements.diffButton.disabled = false;
   elements.toggleEnvModeButton.disabled = !state.canUseEnvMode;
   elements.diffPane.classList.add("hidden");
@@ -535,6 +577,11 @@ function isValidBucketName(name) {
 }
 
 async function createNewBucket() {
+  if (!state.allowCreateBucket) {
+    showToast("バケット作成は無効です。--allow-create-bucket を付けて起動してください。", "error");
+    return;
+  }
+
   const input = window.prompt("新規バケット名を入力してください。");
   const bucket = input?.trim();
   if (!bucket) return;
@@ -618,6 +665,7 @@ elements.newBucketButton.addEventListener("click", async () => {
 });
 
 elements.addEnvRowButton.addEventListener("click", () => {
+  if (!state.allowWrite) return;
   state.envRows.push({ type: "entry", key: "", value: "" });
   renderEnvRows();
 });

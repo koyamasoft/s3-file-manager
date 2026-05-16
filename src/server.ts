@@ -1,7 +1,8 @@
 #!/usr/bin/env node
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
-import { extname, join, resolve } from "node:path";
+import { basename, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getConfig, type GlobalOptions } from "./config.js";
 import { isTextKey } from "./file.js";
@@ -17,6 +18,8 @@ import {
 
 type ServerOptions = GlobalOptions & {
   port: number;
+  allowWrite: boolean;
+  allowCreateBucket: boolean;
 };
 
 type JsonValue =
@@ -36,7 +39,7 @@ const MIME_TYPES: Record<string, string> = {
 };
 
 function parseArgs(argv: string[]): ServerOptions {
-  const options: ServerOptions = { yes: false, port: 5174 };
+  const options: ServerOptions = { yes: false, port: 5174, allowWrite: false, allowCreateBucket: false };
 
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i];
@@ -68,6 +71,12 @@ function parseArgs(argv: string[]): ServerOptions {
           throw new Error("--port requires a positive integer.");
         }
         break;
+      case "--allow-write":
+        options.allowWrite = true;
+        break;
+      case "--allow-create-bucket":
+        options.allowCreateBucket = true;
+        break;
       default:
         throw new Error(`Unknown option: ${value}`);
     }
@@ -87,6 +96,7 @@ function sendJson(response: ServerResponse, status: number, body: JsonValue): vo
   response.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
   });
   response.end(JSON.stringify(body));
 }
@@ -100,9 +110,11 @@ function sendError(response: ServerResponse, status: number, error: unknown): vo
 function readRequestBody(request: IncomingMessage): Promise<string> {
   return new Promise((resolveBody, reject) => {
     const chunks: Buffer[] = [];
+    let size = 0;
     request.on("data", (chunk: Buffer) => {
       chunks.push(chunk);
-      if (Buffer.concat(chunks).length > 10 * 1024 * 1024) {
+      size += chunk.length;
+      if (size > 10 * 1024 * 1024) {
         request.destroy(new Error("Request body is too large."));
       }
     });
@@ -137,20 +149,84 @@ function serveStatic(requestUrl: URL, response: ServerResponse): void {
   response.writeHead(200, {
     "Content-Type": MIME_TYPES[ext] ?? "application/octet-stream",
     "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
   });
   response.end(readFileSync(filePath));
+}
+
+function headerValue(request: IncomingMessage, name: string): string | undefined {
+  const value = request.headers[name.toLowerCase()];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function sameToken(actual: string | undefined, expected: string): boolean {
+  if (!actual) return false;
+  const actualBuffer = Buffer.from(actual);
+  const expectedBuffer = Buffer.from(expected);
+  return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+function isAllowedLocalOrigin(origin: string | undefined, port: number): boolean {
+  if (!origin) return true;
+  try {
+    const parsed = new URL(origin);
+    const hostAllowed = parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost";
+    const portAllowed = parsed.port === String(port);
+    return parsed.protocol === "http:" && hostAllowed && portAllowed;
+  } catch {
+    return false;
+  }
+}
+
+function validateWriteRequest(request: IncomingMessage, port: number, csrfToken: string): boolean {
+  const method = request.method ?? "GET";
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") return true;
+
+  const secFetchSite = headerValue(request, "sec-fetch-site");
+  if (secFetchSite && secFetchSite !== "same-origin" && secFetchSite !== "none") return false;
+
+  return isAllowedLocalOrigin(headerValue(request, "origin"), port) &&
+    sameToken(headerValue(request, "x-s3fm-csrf"), csrfToken);
+}
+
+function isInlinePreviewContentType(contentType: string | undefined): boolean {
+  const normalized = contentType?.toLowerCase().split(";")[0].trim();
+  return normalized === "image/jpeg" ||
+    normalized === "image/png" ||
+    normalized === "image/webp" ||
+    normalized === "image/gif";
+}
+
+function attachmentName(key: string): string {
+  return basename(key).replace(/["\\\r\n]/g, "_") || "object";
 }
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const config = getConfig(options, false);
   const client = createS3Client(config);
+  const csrfToken = randomBytes(32).toString("hex");
 
   const server = createServer(async (request, response) => {
     const host = request.headers.host ?? "127.0.0.1";
     const requestUrl = new URL(request.url ?? "/", `http://${host}`);
 
     try {
+      if (request.method === "OPTIONS") {
+        response.writeHead(204, {
+          Allow: "GET, HEAD, POST, OPTIONS",
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff",
+        });
+        response.end();
+        return;
+      }
+
+      if (!validateWriteRequest(request, options.port, csrfToken)) {
+        sendJson(response, 403, { error: "Forbidden." });
+        return;
+      }
+
       if (requestUrl.pathname === "/api/config") {
         sendJson(response, 200, {
           bucket: config.bucket ?? null,
@@ -158,12 +234,19 @@ async function main(): Promise<void> {
           endpoint: config.endpoint ?? null,
           forcePathStyle: config.forcePathStyle,
           isAwsS3: !config.endpoint,
+          allowWrite: options.allowWrite,
+          allowCreateBucket: options.allowCreateBucket,
+          csrfToken,
         });
         return;
       }
 
       if (requestUrl.pathname === "/api/buckets") {
         if (request.method === "POST") {
+          if (!options.allowCreateBucket) {
+            sendJson(response, 403, { error: "Bucket creation is disabled. Start with --allow-create-bucket to enable it." });
+            return;
+          }
           const rawBody = await readRequestBody(request);
           const parsed = JSON.parse(rawBody) as { bucket?: string };
           const bucket = parsed.bucket?.trim();
@@ -222,9 +305,13 @@ async function main(): Promise<void> {
         if (!bucket) throw new Error("bucket is required.");
 
         const { body, metadata } = await downloadObject(client, bucket, key);
+        const contentType = metadata.contentType ?? "application/octet-stream";
+        const inlinePreview = isInlinePreviewContentType(contentType);
         response.writeHead(200, {
-          "Content-Type": metadata.contentType ?? "application/octet-stream",
+          "Content-Type": inlinePreview ? contentType : "application/octet-stream",
+          "Content-Disposition": inlinePreview ? "inline" : `attachment; filename="${attachmentName(key)}"`,
           "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff",
         });
         response.end(Buffer.from(body));
         return;
@@ -234,6 +321,10 @@ async function main(): Promise<void> {
         if (request.method !== "POST") {
           response.writeHead(405, { Allow: "POST" });
           response.end();
+          return;
+        }
+        if (!options.allowWrite) {
+          sendJson(response, 403, { error: "Writing is disabled. Start with --allow-write to enable uploads." });
           return;
         }
 

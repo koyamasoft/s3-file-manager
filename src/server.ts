@@ -2,7 +2,7 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
-import { basename, extname, resolve } from "node:path";
+import { basename, extname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getConfig, refreshAwsCredentialEnv, type GlobalOptions } from "./config.js";
 import { isTextKey } from "./file.js";
@@ -138,8 +138,9 @@ function serveStatic(requestUrl: URL, response: ServerResponse): void {
   const root = webRoot();
   const rawPath = requestUrl.pathname === "/" ? "/index.html" : requestUrl.pathname;
   const filePath = resolve(root, `.${decodeURIComponent(rawPath)}`);
+  const relativePath = relative(root, filePath);
 
-  if (!filePath.startsWith(root) || !existsSync(filePath)) {
+  if (relativePath.startsWith("..") || isAbsolute(relativePath) || !existsSync(filePath)) {
     response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
     response.end("Not found");
     return;

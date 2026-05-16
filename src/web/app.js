@@ -193,12 +193,35 @@ function isEnvKey(key) {
   return name === ".env" || name.startsWith(".env.") || name.endsWith(".env");
 }
 
+function contentTypeForKey(key) {
+  const extension = key.toLowerCase().match(/(\.[a-z0-9]+)$/)?.[1] ?? "";
+  const types = {
+    ".css": "text/css; charset=utf-8",
+    ".csv": "text/csv; charset=utf-8",
+    ".env": "text/plain; charset=utf-8",
+    ".html": "text/html; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".md": "text/markdown; charset=utf-8",
+    ".txt": "text/plain; charset=utf-8",
+    ".xml": "application/xml; charset=utf-8",
+    ".yaml": "application/yaml; charset=utf-8",
+    ".yml": "application/yaml; charset=utf-8",
+  };
+  return types[extension] ?? "text/plain; charset=utf-8";
+}
+
 function unquoteEnvValue(value) {
   const trimmed = value.trim();
-  if (
-    (trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
+  if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
+    return trimmed.slice(1, -1).replace(/\\([\\nrt"])/g, (_, escaped) => {
+      if (escaped === "n") return "\n";
+      if (escaped === "r") return "\r";
+      if (escaped === "t") return "\t";
+      return escaped;
+    });
+  }
+  if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
     return trimmed.slice(1, -1);
   }
   return value;
@@ -589,7 +612,7 @@ function createNewObject() {
   state.selectedKey = key;
   state.metadata = null;
   state.originalContent = "";
-  state.currentContentType = "text/plain; charset=utf-8";
+  state.currentContentType = contentTypeForKey(key);
   state.isNew = true;
   state.isEnvMode = false;
   state.envRows = [];

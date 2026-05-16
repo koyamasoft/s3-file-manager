@@ -19,6 +19,17 @@ export type GlobalOptions = {
   yes: boolean;
 };
 
+const AWS_CREDENTIAL_ENV_KEYS = new Set([
+  "AWS_ACCESS_KEY_ID",
+  "AWS_SECRET_ACCESS_KEY",
+  "AWS_SESSION_TOKEN",
+  "AWS_PROFILE",
+  "AWS_REGION",
+  "AWS_DEFAULT_REGION",
+]);
+
+const managedAwsCredentialEnvKeys = new Set<string>();
+
 function parseEnvLine(line: string): [string, string] | null {
   const trimmed = line.trim();
   if (!trimmed || trimmed.startsWith("#")) return null;
@@ -46,6 +57,13 @@ function loadEnvValues(envFile: string | undefined, overwrite: boolean, keys?: S
     const path = resolve(candidate);
     if (!existsSync(path)) continue;
 
+    if (overwrite && keys) {
+      for (const key of managedAwsCredentialEnvKeys) {
+        if (keys.has(key)) delete process.env[key];
+      }
+      managedAwsCredentialEnvKeys.clear();
+    }
+
     const content = readFileSync(path, "utf8");
     for (const line of content.split(/\r?\n/)) {
       const parsed = parseEnvLine(line);
@@ -54,8 +72,12 @@ function loadEnvValues(envFile: string | undefined, overwrite: boolean, keys?: S
       if (keys && !keys.has(key)) continue;
       if (overwrite) {
         process.env[key] = value;
+        if (AWS_CREDENTIAL_ENV_KEYS.has(key)) managedAwsCredentialEnvKeys.add(key);
       } else {
-        process.env[key] ??= value;
+        if (process.env[key] == null) {
+          process.env[key] = value;
+          if (AWS_CREDENTIAL_ENV_KEYS.has(key)) managedAwsCredentialEnvKeys.add(key);
+        }
       }
     }
     if (envFile) return;
@@ -63,14 +85,7 @@ function loadEnvValues(envFile: string | undefined, overwrite: boolean, keys?: S
 }
 
 export function refreshAwsCredentialEnv(envFile?: string): void {
-  loadEnvValues(envFile, true, new Set([
-    "AWS_ACCESS_KEY_ID",
-    "AWS_SECRET_ACCESS_KEY",
-    "AWS_SESSION_TOKEN",
-    "AWS_PROFILE",
-    "AWS_REGION",
-    "AWS_DEFAULT_REGION",
-  ]));
+  loadEnvValues(envFile, true, AWS_CREDENTIAL_ENV_KEYS);
 }
 
 function envBool(name: string, fallback: boolean): boolean {

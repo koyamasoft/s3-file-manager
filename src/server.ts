@@ -5,6 +5,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { basename, extname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getConfig, refreshAwsCredentialEnv, type GlobalOptions } from "./config.js";
+import { isCredentialError } from "./credentials.js";
 import { isTextKey } from "./file.js";
 import {
   createBucket,
@@ -200,28 +201,6 @@ function isInlinePreviewContentType(contentType: string | undefined): boolean {
 
 function attachmentName(key: string): string {
   return basename(key).replace(/["\\\r\n]/g, "_") || "object";
-}
-
-function isCredentialError(error: unknown): boolean {
-  const candidate = error as {
-    name?: string;
-    Code?: string;
-    code?: string;
-    message?: string;
-    $metadata?: { httpStatusCode?: number };
-  };
-  const name = candidate.name ?? candidate.Code ?? candidate.code ?? "";
-  const message = candidate.message ?? "";
-  const status = candidate.$metadata?.httpStatusCode;
-
-  return status === 401 ||
-    name === "ExpiredToken" ||
-    name === "ExpiredTokenException" ||
-    name === "InvalidToken" ||
-    name === "InvalidClientTokenId" ||
-    name === "CredentialsProviderError" ||
-    name === "TokenRefreshRequired" ||
-    /session has expired|expired token|security token included in the request is expired/i.test(message);
 }
 
 async function main(): Promise<void> {

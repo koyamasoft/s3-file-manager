@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { getConfig, type GlobalOptions } from "./config.js";
+import { getConfig, refreshAwsCredentialEnv, type GlobalOptions } from "./config.js";
+import { isCredentialError } from "./credentials.js";
 import {
   confirm,
   fileSize,
@@ -134,12 +135,13 @@ function readSavedMetadata(workDir: string, key: string): ObjectMetadata | null 
 }
 
 async function ensureDownloaded(
-  client: ReturnType<typeof createS3Client>,
+  withFreshS3: <T>(operation: () => Promise<T>) => Promise<T>,
+  getClient: () => ReturnType<typeof createS3Client>,
   bucket: string,
   workDir: string,
   key: string,
 ): Promise<{ path: string; metadata: ObjectMetadata }> {
-  const { body, metadata } = await downloadObject(client, bucket, key);
+  const { body, metadata } = await withFreshS3(() => downloadObject(getClient(), bucket, key));
   const path = localPathFor(workDir, key);
   writeFileEnsured(path, body);
   saveMetadata(workDir, metadata);
@@ -147,7 +149,8 @@ async function ensureDownloaded(
 }
 
 async function uploadWithChecks(
-  client: ReturnType<typeof createS3Client>,
+  withFreshS3: <T>(operation: () => Promise<T>) => Promise<T>,
+  getClient: () => ReturnType<typeof createS3Client>,
   bucket: string,
   workDir: string,
   key: string,
@@ -156,7 +159,7 @@ async function uploadWithChecks(
 ): Promise<void> {
   const saved = readSavedMetadata(workDir, key);
   if (saved?.etag) {
-    const current = await headObject(client, bucket, key).catch(() => null);
+    const current = await withFreshS3(() => headObject(getClient(), bucket, key)).catch(() => null);
     if (current?.etag && current.etag !== saved.etag) {
       console.warn(`Warning: remote ETag changed since download.`);
       console.warn(`Downloaded: ${saved.etag}`);
@@ -173,8 +176,8 @@ async function uploadWithChecks(
     return;
   }
 
-  await uploadObject(client, bucket, key, readLocalFile(localPath));
-  const metadata = await headObject(client, bucket, key);
+  await withFreshS3(() => uploadObject(getClient(), bucket, key, readLocalFile(localPath)));
+  const metadata = await withFreshS3(() => headObject(getClient(), bucket, key));
   saveMetadata(workDir, metadata);
   console.log("Uploaded.");
 }
@@ -190,13 +193,30 @@ async function main(): Promise<void> {
   if (!config.bucket) {
     throw new Error("S3_BUCKET is required. Set it in .env or pass --bucket.");
   }
-  const client = createS3Client(config);
+  const bucket = config.bucket;
+  let client = createS3Client(config);
+  let credentialRefreshes = 0;
+  async function withFreshS3<T>(operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!isCredentialError(error)) throw error;
+
+      credentialRefreshes += 1;
+      client.destroy();
+      refreshAwsCredentialEnv(parsed.options.envFile);
+      client = createS3Client(config);
+      console.warn(`AWS credentials were refreshed. Retry count: ${credentialRefreshes}`);
+      return operation();
+    }
+  }
+  const getClient = () => client;
   const commandArgs = [...parsed.args];
 
   switch (parsed.command) {
     case "list": {
       const prefix = commandArgs[0] ?? "";
-      const objects = await listObjects(client, config.bucket, prefix);
+      const objects = await withFreshS3(() => listObjects(client, bucket, prefix));
       if (objects.length === 0) {
         console.log("(no objects)");
         return;
@@ -210,7 +230,7 @@ async function main(): Promise<void> {
     case "head": {
       const key = commandArgs[0];
       if (!key) throw new Error("head requires <key>.");
-      printMetadata(await headObject(client, config.bucket, key));
+      printMetadata(await withFreshS3(() => headObject(client, bucket, key)));
       return;
     }
 
@@ -218,7 +238,7 @@ async function main(): Promise<void> {
       const out = optionValue(commandArgs, "--out");
       const key = commandArgs[0];
       if (!key) throw new Error("get requires <key>.");
-      const { body, metadata } = await downloadObject(client, config.bucket, key);
+      const { body, metadata } = await withFreshS3(() => downloadObject(client, bucket, key));
       const path = out ?? localPathFor(config.workDir, key);
       writeFileEnsured(path, body);
       saveMetadata(config.workDir, metadata);
@@ -230,7 +250,7 @@ async function main(): Promise<void> {
     case "show": {
       const key = commandArgs[0];
       if (!key) throw new Error("show requires <key>.");
-      const { body, metadata } = await downloadObject(client, config.bucket, key);
+      const { body, metadata } = await withFreshS3(() => downloadObject(client, bucket, key));
       saveMetadata(config.workDir, metadata);
       if (!isTextKey(key, metadata.contentType)) {
         printMetadata(metadata);
@@ -249,7 +269,7 @@ async function main(): Promise<void> {
         throw new Error(`Local file does not exist. Run get first: ${localPath}`);
       }
       const remotePath = join(config.workDir, "remote", basename(key));
-      const { body } = await downloadObject(client, config.bucket, key);
+      const { body } = await withFreshS3(() => downloadObject(client, bucket, key));
       writeFileEnsured(remotePath, body);
       runDiff(remotePath, localPath);
       return;
@@ -261,14 +281,14 @@ async function main(): Promise<void> {
       if (!key) throw new Error("put requires <key>.");
       const localPath = file ?? localPathFor(config.workDir, key);
       if (!existsSync(localPath)) throw new Error(`Local file does not exist: ${localPath}`);
-      await uploadWithChecks(client, config.bucket, config.workDir, key, localPath, parsed.options.yes);
+      await uploadWithChecks(withFreshS3, getClient, bucket, config.workDir, key, localPath, parsed.options.yes);
       return;
     }
 
     case "edit": {
       const key = commandArgs[0];
       if (!key) throw new Error("edit requires <key>.");
-      const { path, metadata } = await ensureDownloaded(client, config.bucket, config.workDir, key);
+      const { path, metadata } = await ensureDownloaded(withFreshS3, getClient, bucket, config.workDir, key);
       if (!isTextKey(key, metadata.contentType)) {
         printMetadata(metadata);
         throw new Error("Refusing to edit binary-like object.");
@@ -282,7 +302,7 @@ async function main(): Promise<void> {
         console.log("No changes.");
         return;
       }
-      await uploadWithChecks(client, config.bucket, config.workDir, key, path, parsed.options.yes);
+      await uploadWithChecks(withFreshS3, getClient, bucket, config.workDir, key, path, parsed.options.yes);
       return;
     }
 

@@ -261,6 +261,14 @@ npm run s3 -- put logs/example.json --yes
 | `--allow-write` | Web UI からの新規ファイル作成・保存を有効にします |
 | `--allow-create-bucket` | Web UI からのバケット作成を有効にします |
 
+## テスト
+
+```bash
+npm test
+```
+
+`npm test` は TypeScript をビルドしてから、Node.js 標準のテストランナーでユニットテストを実行します。
+
 ## 編集の流れ
 
 ```text

@@ -7,6 +7,7 @@
   "scripts": {
     "build": "tsc",
     "s3": "node dist/cli.js",
+    "test": "npm run build && node --test dist/*.test.js",
     "web": "node dist/server.js",
     "typecheck": "tsc --noEmit"
   },

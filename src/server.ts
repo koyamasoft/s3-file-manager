@@ -3,6 +3,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, extname, isAbsolute, relative, resolve } from "node:path";
+import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { getConfig, refreshAwsCredentialEnv, type GlobalOptions } from "./config.js";
 import { isCredentialError } from "./credentials.js";
@@ -11,6 +12,7 @@ import {
   createBucket,
   createS3Client,
   downloadObject,
+  getObjectForDownload,
   headObject,
   listBuckets,
   listObjects,
@@ -211,6 +213,11 @@ function attachmentName(key: string): string {
   return basename(key).replace(/["\\\r\n]/g, "_") || "object";
 }
 
+function contentDispositionAttachment(key: string): string {
+  const fallback = attachmentName(key);
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(fallback)}`;
+}
+
 function assertWebObjectSize(contentLength: number | undefined, key: string): void {
   if (isOverWebObjectLimit(contentLength)) {
     throw Object.assign(
@@ -218,6 +225,16 @@ function assertWebObjectSize(contentLength: number | undefined, key: string): vo
       { statusCode: 413 },
     );
   }
+}
+
+function streamObjectBody(body: NonNullable<Awaited<ReturnType<typeof getObjectForDownload>>["Body"]>, response: ServerResponse): void {
+  if ("pipe" in body && typeof body.pipe === "function") {
+    body.pipe(response);
+    return;
+  }
+
+  const webStream = body.transformToWebStream();
+  Readable.fromWeb(webStream as Parameters<typeof Readable.fromWeb>[0]).pipe(response);
 }
 
 async function main(): Promise<void> {
@@ -374,6 +391,25 @@ async function main(): Promise<void> {
           "X-Content-Type-Options": "nosniff",
         });
         response.end(Buffer.from(body));
+        return;
+      }
+
+      if (requestUrl.pathname === "/api/download") {
+        const key = requestUrl.searchParams.get("key");
+        if (!key) throw new Error("key is required.");
+        const bucket = bucketFromRequest(requestUrl, config.bucket ?? "");
+        if (!bucket) throw new Error("bucket is required.");
+
+        const result = await withFreshS3(() => getObjectForDownload(client, bucket, key));
+        if (!result.Body) throw new Error(`Object has no body: ${key}`);
+        response.writeHead(200, {
+          "Content-Type": result.ContentType ?? "application/octet-stream",
+          "Content-Disposition": contentDispositionAttachment(key),
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff",
+          ...(result.ContentLength != null && { "Content-Length": String(result.ContentLength) }),
+        });
+        streamObjectBody(result.Body, response);
         return;
       }
 

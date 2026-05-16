@@ -1,6 +1,7 @@
 import {
   CreateBucketCommand,
   GetObjectCommand,
+  type GetObjectCommandOutput,
   HeadObjectCommand,
   ListBucketsCommand,
   ListObjectsV2Command,
@@ -106,6 +107,16 @@ export async function downloadObject(
       lastModified: result.LastModified?.toISOString(),
     },
   };
+}
+
+export async function getObjectForDownload(
+  client: S3Client,
+  bucket: string,
+  key: string,
+): Promise<GetObjectCommandOutput> {
+  const result = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  if (!result.Body) throw new Error(`Object has no body: ${key}`);
+  return result;
 }
 
 export async function uploadObject(

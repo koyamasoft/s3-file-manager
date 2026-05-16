@@ -40,6 +40,7 @@ const elements = {
   writeModeButton: document.querySelector("#writeModeButton"),
   wideEditorButton: document.querySelector("#wideEditorButton"),
   toggleEnvModeButton: document.querySelector("#toggleEnvModeButton"),
+  downloadButton: document.querySelector("#downloadButton"),
   saveButton: document.querySelector("#saveButton"),
   diffButton: document.querySelector("#diffButton"),
   diffPane: document.querySelector("#diffPane"),
@@ -103,6 +104,24 @@ function updateEditorLayout() {
   elements.wideEditorButton.classList.toggle("active", state.wideEditor);
 }
 
+function updateDownloadButton() {
+  if (!state.selectedBucket || !state.selectedKey || state.isNew) {
+    elements.downloadButton.classList.add("hidden");
+    elements.downloadButton.removeAttribute("href");
+    elements.downloadButton.removeAttribute("download");
+    return;
+  }
+
+  const params = new URLSearchParams({
+    bucket: state.selectedBucket,
+    key: state.selectedKey,
+  });
+  const name = state.selectedKey.split("/").filter(Boolean).pop() || "object";
+  elements.downloadButton.href = `/api/download?${params.toString()}`;
+  elements.downloadButton.download = name;
+  elements.downloadButton.classList.remove("hidden");
+}
+
 function updateWriteControls() {
   elements.newButton.disabled = !state.allowWrite;
   elements.newBucketButton.disabled = !state.allowCreateBucket;
@@ -118,6 +137,7 @@ function updateWriteControls() {
   if (!elements.envPane.classList.contains("hidden")) {
     renderEnvRows();
   }
+  updateDownloadButton();
 }
 
 function setMetadata(metadata) {
@@ -586,6 +606,7 @@ function clearSelection() {
   elements.saveButton.disabled = true;
   elements.diffButton.disabled = true;
   elements.toggleEnvModeButton.disabled = true;
+  updateDownloadButton();
   hideDiff();
   setMetadata(null);
   setMode(null);
@@ -599,6 +620,7 @@ async function openObject(key) {
   state.canUseEnvMode = isEnvKey(key);
   state.selectedKey = key;
   elements.selectedKey.textContent = key;
+  updateDownloadButton();
   elements.editor.value = "読み込み中...";
   elements.editor.disabled = true;
   elements.saveButton.disabled = true;
@@ -618,6 +640,7 @@ async function openObject(key) {
   state.metadata = data.metadata;
   state.currentContentType = data.metadata?.contentType ?? null;
   setMetadata(state.metadata);
+  updateDownloadButton();
 
   if (data.text) {
     state.originalContent = data.content ?? "";
@@ -719,6 +742,7 @@ function createNewObject() {
   state.envRows = [];
   state.canUseEnvMode = isEnvKey(key);
   elements.selectedKey.textContent = key;
+  updateDownloadButton();
   if (isEnvKey(key)) {
     showEnvEditor("");
     setMode("env");

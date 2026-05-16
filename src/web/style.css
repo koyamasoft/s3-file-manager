@@ -35,7 +35,8 @@ textarea {
   font: inherit;
 }
 
-button {
+button,
+.button-link {
   border: 1px solid var(--accent);
   background: var(--accent);
   color: #fff;
@@ -43,6 +44,13 @@ button {
   padding: 0 14px;
   border-radius: 6px;
   cursor: pointer;
+}
+
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
 }
 
 button:disabled {

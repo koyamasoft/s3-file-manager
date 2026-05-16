@@ -199,9 +199,14 @@ function unquoteEnvValue(value) {
 function parseEnvContent(content) {
   if (!content) return [];
   return content.split(/\r?\n/).map((line) => {
-    const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/);
-    if (!match) return { type: "raw", raw: line };
-    return { type: "entry", key: match[1], value: unquoteEnvValue(match[2]) };
+    const body = line.trimStart().startsWith("export ") ? line.trimStart().slice("export ".length) : line;
+    const equals = body.indexOf("=");
+    if (equals <= 0) return { type: "raw", raw: line };
+
+    const key = body.slice(0, equals).trim();
+    if (!key || key.startsWith("#")) return { type: "raw", raw: line };
+
+    return { type: "entry", key, value: unquoteEnvValue(body.slice(equals + 1)) };
   });
 }
 

@@ -13,7 +13,7 @@ AWS キーはブラウザに渡しません。localhost の Node.js サーバー
 - オブジェクト一覧、メタデータ確認、画像プレビュー
 - テキストファイルの表示・編集・差分確認・アップロード
 - `.env`, `.env.local`, `*.env` の key/value 編集
-- CLI での `list`, `get`, `show`, `diff`, `edit`, `put`
+- CLI での `list`, `head`, `get`, `show`, `diff`, `edit`, `put`
 - 認証期限切れ時の S3 クライアント再作成と1回リトライ
 - MinIO / MiniStack などの S3 互換エンドポイント対応
 
@@ -249,7 +249,7 @@ S3_FORCE_PATH_STYLE=true
 
 - AWS 認証情報はブラウザに渡しません。
 - Node.js サーバーが AWS SDK 経由で S3 にアクセスします。
-- `.env`, `.env.local`, `*.env` はローカルサーバー経由で表示・編集します。
+- `.env`, `.env.local`, `*.env` はブラウザに直接読み込ませず、ローカルサーバー経由で表示・編集します。
 
 ### ネットワーク
 

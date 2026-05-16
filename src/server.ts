@@ -266,6 +266,24 @@ async function main(): Promise<void> {
         return;
       }
 
+      if (requestUrl.pathname === "/api/write-mode") {
+        if (request.method !== "POST") {
+          response.writeHead(405, { Allow: "POST" });
+          response.end();
+          return;
+        }
+
+        const rawBody = await readRequestBody(request);
+        const parsed = JSON.parse(rawBody) as { allowWrite?: boolean };
+        if (typeof parsed.allowWrite !== "boolean") {
+          throw new Error("allowWrite is required.");
+        }
+
+        options.allowWrite = parsed.allowWrite;
+        sendJson(response, 200, { allowWrite: options.allowWrite });
+        return;
+      }
+
       if (requestUrl.pathname === "/api/list") {
         const prefix = requestUrl.searchParams.get("prefix") ?? "";
         const bucket = bucketFromRequest(requestUrl, config.bucket ?? "");

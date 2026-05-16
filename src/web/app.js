@@ -34,6 +34,7 @@ const elements = {
   envRows: document.querySelector("#envRows"),
   addEnvRowButton: document.querySelector("#addEnvRowButton"),
   previewPane: document.querySelector("#previewPane"),
+  writeModeButton: document.querySelector("#writeModeButton"),
   toggleEnvModeButton: document.querySelector("#toggleEnvModeButton"),
   saveButton: document.querySelector("#saveButton"),
   diffButton: document.querySelector("#diffButton"),
@@ -97,6 +98,16 @@ function updateWriteControls() {
   elements.newBucketButton.disabled = !state.allowCreateBucket;
   elements.saveButton.disabled = !state.allowWrite || !state.selectedKey || (!state.metadata && !state.isNew);
   elements.addEnvRowButton.disabled = !state.allowWrite;
+  elements.writeModeButton.textContent = state.allowWrite ? "保存 ON" : "保存 OFF";
+  elements.writeModeButton.classList.toggle("active", state.allowWrite);
+
+  if (!elements.editor.classList.contains("hidden")) {
+    elements.editor.disabled = !state.allowWrite || (!state.selectedKey && !state.isNew);
+  }
+
+  if (!elements.envPane.classList.contains("hidden")) {
+    renderEnvRows();
+  }
 }
 
 function setMetadata(metadata) {
@@ -348,7 +359,7 @@ async function loadConfig() {
     setWarning("AWS S3 に接続しています。アップロード前に対象キーを確認してください。");
   }
   if (!state.allowWrite) {
-    showToast("読み取り専用で起動しています。保存するには --allow-write を付けて起動してください。");
+    showToast("読み取り専用です。画面右上の「保存 OFF」から保存を有効にできます。");
   }
 }
 
@@ -465,7 +476,7 @@ async function openObject(key) {
 async function saveObject(force = false) {
   if (!state.selectedKey || (!state.metadata && !state.isNew)) return;
   if (!state.allowWrite) {
-    showToast("読み取り専用で起動しています。保存するには --allow-write を付けて起動してください。", "error");
+    showToast("読み取り専用です。画面右上の「保存 OFF」から保存を有効にしてください。", "error");
     return;
   }
 
@@ -514,7 +525,7 @@ function normalizeNewKey(input, prefix) {
 
 function createNewObject() {
   if (!state.allowWrite) {
-    showToast("読み取り専用で起動しています。保存するには --allow-write を付けて起動してください。", "error");
+    showToast("読み取り専用です。画面右上の「保存 OFF」から保存を有効にしてください。", "error");
     return;
   }
   if (!state.selectedBucket) {
@@ -615,6 +626,17 @@ function showDiff() {
   elements.diffPane.classList.remove("hidden");
 }
 
+async function setWriteMode(allowWrite) {
+  const result = await requestJson("/api/write-mode", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ allowWrite }),
+  });
+  state.allowWrite = !!result.allowWrite;
+  updateWriteControls();
+  showToast(state.allowWrite ? "保存を有効にしました。" : "読み取り専用に切り替えました。");
+}
+
 async function boot() {
   try {
     await loadConfig();
@@ -668,6 +690,18 @@ elements.addEnvRowButton.addEventListener("click", () => {
   if (!state.allowWrite) return;
   state.envRows.push({ type: "entry", key: "", value: "" });
   renderEnvRows();
+});
+
+elements.writeModeButton.addEventListener("click", async () => {
+  const nextAllowWrite = !state.allowWrite;
+  if (nextAllowWrite && !window.confirm("このWeb UIからS3への保存を有効にしますか？")) return;
+  if (!nextAllowWrite && getCurrentContent() !== state.originalContent && !window.confirm("未保存の編集があります。読み取り専用に切り替えますか？")) return;
+
+  try {
+    await setWriteMode(nextAllowWrite);
+  } catch (error) {
+    showToast(error.message, "error");
+  }
 });
 
 elements.toggleEnvModeButton.addEventListener("click", toggleEnvMode);

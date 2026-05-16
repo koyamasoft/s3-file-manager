@@ -257,6 +257,18 @@ select {
   justify-content: flex-end;
 }
 
+.mode-toggle {
+  border-color: #b7c0cc;
+  background: #fff;
+  color: var(--muted);
+}
+
+.mode-toggle.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
 .warning {
   flex: 0 0 auto;
   margin: 16px 24px 0;

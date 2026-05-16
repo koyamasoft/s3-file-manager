@@ -22,9 +22,10 @@
         </header>
 
         <form id="prefixForm" class="prefix-form">
-          <label for="bucketSelect">Bucket</label>
+          <label for="bucketSearchInput">Bucket</label>
           <div class="bucket-row">
-            <select id="bucketSelect" name="bucket"></select>
+            <input id="bucketSearchInput" name="bucket" type="text" placeholder="バケットを検索">
+            <div id="bucketSuggestions" class="bucket-suggestions hidden"></div>
           </div>
 
           <label for="prefixInput">Prefix</label>

@@ -141,10 +141,39 @@ select {
 .bucket-row {
   margin: 8px 0 14px;
   display: grid;
+  position: relative;
 }
 
-select {
+.bucket-suggestions {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(17, 24, 39, 0.12);
+}
+
+.bucket-suggestion {
   width: 100%;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+  color: var(--text);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.bucket-suggestion:hover,
+.bucket-suggestion.active {
+  background: #e8f2ef;
 }
 
 .object-list-header {

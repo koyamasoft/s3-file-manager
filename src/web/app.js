@@ -23,7 +23,8 @@ const elements = {
   newButton: document.querySelector("#newButton"),
   refreshButton: document.querySelector("#refreshButton"),
   prefixForm: document.querySelector("#prefixForm"),
-  bucketSelect: document.querySelector("#bucketSelect"),
+  bucketSearchInput: document.querySelector("#bucketSearchInput"),
+  bucketSuggestions: document.querySelector("#bucketSuggestions"),
   prefixInput: document.querySelector("#prefixInput"),
   objectCount: document.querySelector("#objectCount"),
   objectList: document.querySelector("#objectList"),
@@ -151,19 +152,60 @@ function renderObjectList() {
   }
 }
 
-function renderBucketSelect() {
-  elements.bucketSelect.replaceChildren();
-
+function bucketNames() {
   const names = state.buckets.length > 0
     ? state.buckets.map((bucket) => bucket.name)
     : state.config.bucket ? [state.config.bucket] : [];
+  return [...new Set(names)].sort((a, b) => a.localeCompare(b));
+}
 
-  for (const name of names) {
-    const option = document.createElement("option");
-    option.value = name;
-    option.textContent = name;
-    option.selected = name === state.selectedBucket;
-    elements.bucketSelect.append(option);
+function filteredBucketNames() {
+  const query = elements.bucketSearchInput.value.trim().toLowerCase();
+  if (!query) return bucketNames();
+  return bucketNames().filter((name) => name.toLowerCase().includes(query));
+}
+
+function renderBucketSuggestions(show = false) {
+  elements.bucketSuggestions.replaceChildren();
+  const names = filteredBucketNames();
+
+  if (!show || names.length === 0) {
+    elements.bucketSuggestions.classList.add("hidden");
+    return;
+  }
+
+  for (const name of names.slice(0, 20)) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "bucket-suggestion";
+    button.textContent = name;
+    button.classList.toggle("active", name === state.selectedBucket);
+    button.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      selectBucket(name);
+    });
+    elements.bucketSuggestions.append(button);
+  }
+
+  elements.bucketSuggestions.classList.remove("hidden");
+}
+
+function renderBucketSearch() {
+  elements.bucketSearchInput.value = state.selectedBucket ?? "";
+  renderBucketSuggestions(false);
+}
+
+async function selectBucket(bucket) {
+  state.selectedBucket = bucket;
+  elements.bucketSearchInput.value = bucket;
+  renderBucketSuggestions(false);
+  updateConnectionLabel();
+  clearSelection();
+  try {
+    await loadObjects();
+    showToast(`バケットを切り替えました: ${state.selectedBucket}`);
+  } catch (error) {
+    showToast(error.message, "error");
   }
 }
 
@@ -445,7 +487,7 @@ async function loadBuckets() {
     state.buckets = [];
     showToast(`バケット一覧を取得できませんでした: ${error.message}`, "error");
   }
-  renderBucketSelect();
+  renderBucketSearch();
   updateConnectionLabel();
 }
 
@@ -684,7 +726,7 @@ async function createNewBucket() {
   state.selectedBucket = bucket;
   updateConnectionLabel();
   await loadBuckets();
-  renderBucketSelect();
+  renderBucketSearch();
   clearSelection();
   await loadObjects();
   updateConnectionLabel();
@@ -741,16 +783,31 @@ elements.prefixForm.addEventListener("submit", async (event) => {
   }
 });
 
-elements.bucketSelect.addEventListener("change", async () => {
-  state.selectedBucket = elements.bucketSelect.value;
-  updateConnectionLabel();
-  clearSelection();
-  try {
-    await loadObjects();
-    showToast(`バケットを切り替えました: ${state.selectedBucket}`);
-  } catch (error) {
-    showToast(error.message, "error");
+elements.bucketSearchInput.addEventListener("focus", () => {
+  elements.bucketSearchInput.select();
+  renderBucketSuggestions(true);
+});
+
+elements.bucketSearchInput.addEventListener("input", () => {
+  renderBucketSuggestions(true);
+});
+
+elements.bucketSearchInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    const [first] = filteredBucketNames();
+    if (first) selectBucket(first);
+  } else if (event.key === "Escape") {
+    elements.bucketSearchInput.value = state.selectedBucket ?? "";
+    renderBucketSuggestions(false);
   }
+});
+
+elements.bucketSearchInput.addEventListener("blur", () => {
+  window.setTimeout(() => {
+    elements.bucketSearchInput.value = state.selectedBucket ?? "";
+    renderBucketSuggestions(false);
+  }, 120);
 });
 
 elements.refreshButton.addEventListener("click", async () => {

@@ -4,7 +4,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { existsSync, readFileSync } from "node:fs";
 import { basename, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { getConfig, type GlobalOptions } from "./config.js";
+import { getConfig, refreshAwsCredentialEnv, type GlobalOptions } from "./config.js";
 import { isTextKey } from "./file.js";
 import {
   createBucket,
@@ -201,11 +201,48 @@ function attachmentName(key: string): string {
   return basename(key).replace(/["\\\r\n]/g, "_") || "object";
 }
 
+function isCredentialError(error: unknown): boolean {
+  const candidate = error as {
+    name?: string;
+    Code?: string;
+    code?: string;
+    message?: string;
+    $metadata?: { httpStatusCode?: number };
+  };
+  const name = candidate.name ?? candidate.Code ?? candidate.code ?? "";
+  const message = candidate.message ?? "";
+  const status = candidate.$metadata?.httpStatusCode;
+
+  return status === 401 ||
+    name === "ExpiredToken" ||
+    name === "ExpiredTokenException" ||
+    name === "InvalidToken" ||
+    name === "InvalidClientTokenId" ||
+    name === "CredentialsProviderError" ||
+    name === "TokenRefreshRequired" ||
+    /session has expired|expired token|security token included in the request is expired/i.test(message);
+}
+
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const config = getConfig(options, false);
-  const client = createS3Client(config);
+  let client = createS3Client(config);
   const csrfToken = randomBytes(32).toString("hex");
+  let credentialRefreshes = 0;
+
+  async function withFreshS3<T>(operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!isCredentialError(error)) throw error;
+
+      credentialRefreshes += 1;
+      client.destroy();
+      refreshAwsCredentialEnv(options.envFile);
+      client = createS3Client(config);
+      return operation();
+    }
+  }
 
   const server = createServer(async (request, response) => {
     const host = request.headers.host ?? "127.0.0.1";
@@ -236,6 +273,7 @@ async function main(): Promise<void> {
           isAwsS3: !config.endpoint,
           allowWrite: options.allowWrite,
           allowCreateBucket: options.allowCreateBucket || options.allowWrite,
+          credentialRefreshes,
           csrfToken,
         });
         return;
@@ -251,12 +289,12 @@ async function main(): Promise<void> {
           const parsed = JSON.parse(rawBody) as { bucket?: string };
           const bucket = parsed.bucket?.trim();
           if (!bucket) throw new Error("bucket is required.");
-          await createBucket(client, bucket, config.region, !!config.endpoint);
+          await withFreshS3(() => createBucket(client, bucket, config.region, !!config.endpoint));
           sendJson(response, 200, { bucket });
           return;
         }
 
-        const buckets = await listBuckets(client);
+        const buckets = await withFreshS3(() => listBuckets(client));
         sendJson(response, 200, {
           buckets: buckets.map((bucket) => ({
             name: bucket.Name ?? "",
@@ -288,7 +326,7 @@ async function main(): Promise<void> {
         const prefix = requestUrl.searchParams.get("prefix") ?? "";
         const bucket = bucketFromRequest(requestUrl, config.bucket ?? "");
         if (!bucket) throw new Error("bucket is required.");
-        const objects = await listObjects(client, bucket, prefix);
+        const objects = await withFreshS3(() => listObjects(client, bucket, prefix));
         sendJson(response, 200, {
           objects: objects.map((object) => ({
             key: object.Key ?? "",
@@ -306,7 +344,7 @@ async function main(): Promise<void> {
         const bucket = bucketFromRequest(requestUrl, config.bucket ?? "");
         if (!bucket) throw new Error("bucket is required.");
 
-        const { body, metadata } = await downloadObject(client, bucket, key);
+        const { body, metadata } = await withFreshS3(() => downloadObject(client, bucket, key));
         const text = isTextKey(key, metadata.contentType);
         sendJson(response, 200, {
           metadata,
@@ -322,7 +360,7 @@ async function main(): Promise<void> {
         const bucket = bucketFromRequest(requestUrl, config.bucket ?? "");
         if (!bucket) throw new Error("bucket is required.");
 
-        const { body, metadata } = await downloadObject(client, bucket, key);
+        const { body, metadata } = await withFreshS3(() => downloadObject(client, bucket, key));
         const contentType = metadata.contentType ?? "application/octet-stream";
         const inlinePreview = isInlinePreviewContentType(contentType);
         response.writeHead(200, {
@@ -359,9 +397,11 @@ async function main(): Promise<void> {
         if (!parsed.key) throw new Error("key is required.");
         if (typeof parsed.content !== "string") throw new Error("content is required.");
 
+        const key = parsed.key;
+        const content = parsed.content;
         const bucket = parsed.bucket || config.bucket;
         if (!bucket) throw new Error("bucket is required.");
-        const current = await headObject(client, bucket, parsed.key).catch((error: unknown) => {
+        const current = await withFreshS3(() => headObject(client, bucket, key)).catch((error: unknown) => {
           const namedError = error as { name?: string; $metadata?: { httpStatusCode?: number } };
           if (
             namedError.name === "NotFound" ||
@@ -394,14 +434,16 @@ async function main(): Promise<void> {
           return;
         }
 
-        await uploadObject(
-          client,
-          bucket,
-          parsed.key,
-          Buffer.from(parsed.content, "utf8"),
-          parsed.contentType ?? current?.contentType,
+        await withFreshS3(() =>
+          uploadObject(
+            client,
+            bucket,
+            key,
+            Buffer.from(content, "utf8"),
+            parsed.contentType ?? current?.contentType,
+          ),
         );
-        const metadata = await headObject(client, bucket, parsed.key);
+        const metadata = await withFreshS3(() => headObject(client, bucket, key));
         sendJson(response, 200, { metadata });
         return;
       }

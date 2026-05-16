@@ -37,6 +37,10 @@ function parseEnvLine(line: string): [string, string] | null {
 }
 
 export function loadEnvFile(envFile?: string): void {
+  loadEnvValues(envFile, false);
+}
+
+function loadEnvValues(envFile: string | undefined, overwrite: boolean, keys?: Set<string>): void {
   const candidates = envFile ? [envFile] : [".env.local", ".env"];
   for (const candidate of candidates) {
     const path = resolve(candidate);
@@ -47,10 +51,26 @@ export function loadEnvFile(envFile?: string): void {
       const parsed = parseEnvLine(line);
       if (!parsed) continue;
       const [key, value] = parsed;
-      process.env[key] ??= value;
+      if (keys && !keys.has(key)) continue;
+      if (overwrite) {
+        process.env[key] = value;
+      } else {
+        process.env[key] ??= value;
+      }
     }
     if (envFile) return;
   }
+}
+
+export function refreshAwsCredentialEnv(envFile?: string): void {
+  loadEnvValues(envFile, true, new Set([
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
+    "AWS_PROFILE",
+    "AWS_REGION",
+    "AWS_DEFAULT_REGION",
+  ]));
 }
 
 function envBool(name: string, fallback: boolean): boolean {

@@ -252,7 +252,7 @@ async function main(): Promise<void> {
           forcePathStyle: config.forcePathStyle,
           isAwsS3: !config.endpoint,
           allowWrite: options.allowWrite,
-          allowCreateBucket: options.allowCreateBucket || options.allowWrite,
+          allowCreateBucket: options.allowCreateBucket,
           credentialRefreshes,
           csrfToken,
         });
@@ -261,8 +261,8 @@ async function main(): Promise<void> {
 
       if (requestUrl.pathname === "/api/buckets") {
         if (request.method === "POST") {
-          if (!options.allowCreateBucket && !options.allowWrite) {
-            sendJson(response, 403, { error: "Bucket creation is disabled. Turn on write mode or start with --allow-create-bucket to enable it." });
+          if (!options.allowCreateBucket) {
+            sendJson(response, 403, { error: "Bucket creation is disabled. Start with --allow-create-bucket to enable it." });
             return;
           }
           const rawBody = await readRequestBody(request);

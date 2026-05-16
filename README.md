@@ -1,8 +1,8 @@
 # S3 File Manager
 
-S3 または MinIO / MiniStack などの S3 互換サービスにあるファイルを、ローカルから確認・ダウンロード・編集・アップロードするための CLI / Web UI ツールです。
+S3 / MinIO / MiniStack などの S3 互換ストレージを、安全に確認・編集するためのローカル専用 Web UI / CLI ツールです。
 
-ブラウザに AWS キーを渡さず、localhost の Node サーバーが AWS SDK 経由で S3 にアクセスします。Web UI は `127.0.0.1` のみで待ち受け、起動直後は読み取り専用です。
+AWS キーはブラウザに渡しません。localhost の Node.js サーバーが AWS SDK 経由で S3 にアクセスします。Web UI は `127.0.0.1` のみで待ち受け、起動直後は保存OFFです。
 
 ![S3 File Manager Web UI](docs/screenshot.svg)
 
@@ -20,8 +20,9 @@ S3 または MinIO / MiniStack などの S3 互換サービスにあるファイ
 ## クイックスタート
 
 ```bash
-cd tools/s3-file-manager
-npm install
+git clone https://github.com/koyamasoft/s3-file-manager.git
+cd s3-file-manager
+npm ci
 npm run build
 npm run web
 ```
@@ -48,7 +49,7 @@ npm run web
 
 ## Web UI
 
-通常起動では読み取り専用です。ファイルを新規作成・保存する場合は、画面右上の `保存 OFF` を押して保存を有効にします。
+通常起動では `保存 OFF` で開始します。必要なときだけ画面右上の `保存 OFF` を押して、ファイル作成・アップロードを一時的に有効化できます。
 
 起動直後から保存を有効にしたい場合:
 
@@ -56,7 +57,7 @@ npm run web
 npm run web -- --allow-write
 ```
 
-バケット作成も起動直後から許可したい場合:
+バケット作成は、保存ONとは別に `--allow-create-bucket` を指定した場合のみ有効です。実行時には確認ダイアログを表示します。
 
 ```bash
 npm run web -- --allow-write --allow-create-bucket
@@ -88,7 +89,7 @@ Web UI でできること:
 | env編集 | `.env`, `.env.local`, `*.env` を key/value テーブルまたは通常テキストとして編集します |
 | 差分確認 | 開いた時点の内容と現在の編集内容を比較します |
 | 画像プレビュー | JPEG、PNG、WebP、GIF を表示します |
-| バケット作成 | 保存ONまたは `--allow-create-bucket` 指定時にバケットを作成します |
+| バケット作成 | `--allow-create-bucket` 指定時のみバケットを作成します |
 
 ## CLI
 
@@ -244,16 +245,39 @@ S3_FORCE_PATH_STYLE=true
 
 ## 安全仕様
 
+### 認証情報
+
+- AWS 認証情報はブラウザに渡しません。
+- Node.js サーバーが AWS SDK 経由で S3 にアクセスします。
+- `.env`, `.env.local`, `*.env` はローカルサーバー経由で表示・編集します。
+
+### ネットワーク
+
 - Web UI は `127.0.0.1` のみで待ち受けます。
-- Web UI は起動直後、読み取り専用です。
 - Web UI の書き込みAPIには CSRF トークンと Origin / Sec-Fetch-Site チェックがあります。
+
+### 書き込み保護
+
+- Web UI は起動直後、保存OFFです。
+- `--allow-write` を指定すると、起動直後から保存ONで開始します。
 - Web UI の新規作成は、同じキーのオブジェクトが既にある場合に警告します。
-- Web UI のバケット作成は、確認ダイアログ後に実行します。
-- AWS S3 接続時は警告バナーを表示します。
+- Web UI のバケット作成は、`--allow-create-bucket` 指定時のみ有効です。
 - ダウンロード後に S3 側の ETag が変わっていた場合、アップロード前に警告します。
+- 削除コマンドはありません。
+
+### 表示・プレビュー
+
+- AWS S3 接続時は、本番環境の誤操作を避けるため警告バナーを表示します。
 - バイナリと思われるオブジェクトは、`show` や `edit` の対象にしません。
 - rawプレビューは JPEG、PNG、WebP、GIF のみ inline 表示します。
-- 削除コマンドはありません。
+
+## 制限事項
+
+- 削除操作には対応していません。
+- 大容量ファイルのブラウザ編集には向いていません。
+- バイナリファイルの編集には対応していません。
+- 複数ユーザーで共有するサーバー用途は想定していません。
+- Prefix サジェストは、現在表示中のオブジェクト一覧から候補を作ります。
 
 ## 認証期限切れへの対応
 
@@ -307,3 +331,7 @@ Cmd + Shift + R
 ```bash
 npm run build
 ```
+
+## License
+
+MIT

@@ -105,7 +105,7 @@ function updateEditorLayout() {
 
 function updateWriteControls() {
   elements.newButton.disabled = !state.allowWrite;
-  elements.newBucketButton.disabled = !state.allowCreateBucket && !state.allowWrite;
+  elements.newBucketButton.disabled = !state.allowCreateBucket;
   elements.saveButton.disabled = !state.allowWrite || !state.selectedKey || (!state.metadata && !state.isNew);
   elements.addEnvRowButton.disabled = !state.allowWrite;
   elements.writeModeButton.textContent = state.allowWrite ? "保存 ON" : "保存 OFF";
@@ -758,8 +758,8 @@ function isValidBucketName(name) {
 }
 
 async function createNewBucket() {
-  if (!state.allowCreateBucket && !state.allowWrite) {
-    showToast("保存OFFです。画面右上の「保存 OFF」から保存を有効にしてください。", "error");
+  if (!state.allowCreateBucket) {
+    showToast("バケット作成は無効です。--allow-create-bucket を付けて起動してください。", "error");
     return;
   }
 

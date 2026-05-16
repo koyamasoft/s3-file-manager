@@ -485,7 +485,7 @@ function clearSelection() {
   elements.saveButton.disabled = true;
   elements.diffButton.disabled = true;
   elements.toggleEnvModeButton.disabled = true;
-  elements.diffPane.classList.add("hidden");
+  hideDiff();
   setMetadata(null);
   setMode(null);
   updateWriteControls();
@@ -503,7 +503,7 @@ async function openObject(key) {
   elements.saveButton.disabled = true;
   elements.diffButton.disabled = true;
   elements.toggleEnvModeButton.disabled = !state.canUseEnvMode;
-  elements.diffPane.classList.add("hidden");
+  hideDiff();
   elements.previewPane.classList.add("hidden");
   elements.envPane.classList.add("hidden");
   elements.editor.classList.remove("hidden");
@@ -629,7 +629,7 @@ function createNewObject() {
   elements.saveButton.disabled = !state.allowWrite;
   elements.diffButton.disabled = false;
   elements.toggleEnvModeButton.disabled = !state.canUseEnvMode;
-  elements.diffPane.classList.add("hidden");
+  hideDiff();
   setMetadata({
     contentType: state.currentContentType,
     contentLength: 0,
@@ -695,6 +695,20 @@ function showDiff() {
   const diff = diffLines(state.originalContent, getCurrentContent());
   elements.diffOutput.textContent = diff.trim() ? diff : "変更はありません。";
   elements.diffPane.classList.remove("hidden");
+  elements.diffButton.textContent = "差分を閉じる";
+}
+
+function hideDiff() {
+  elements.diffPane.classList.add("hidden");
+  elements.diffButton.textContent = "差分";
+}
+
+function toggleDiff() {
+  if (elements.diffPane.classList.contains("hidden")) {
+    showDiff();
+  } else {
+    hideDiff();
+  }
 }
 
 async function setWriteMode(allowWrite) {
@@ -791,10 +805,8 @@ elements.saveButton.addEventListener("click", async () => {
   }
 });
 
-elements.diffButton.addEventListener("click", showDiff);
-elements.closeDiffButton.addEventListener("click", () => {
-  elements.diffPane.classList.add("hidden");
-});
+elements.diffButton.addEventListener("click", toggleDiff);
+elements.closeDiffButton.addEventListener("click", hideDiff);
 
 boot();
 updateEditorLayout();

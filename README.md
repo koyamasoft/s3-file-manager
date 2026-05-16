@@ -64,6 +64,18 @@ npm run web -- --allow-write
 npm run web -- --allow-write --allow-create-bucket
 ```
 
+Web UI で使えるオプション:
+
+| オプション | 用途 |
+| --- | --- |
+| `--port <number>` | Web UI のポートを指定します |
+| `--bucket <name>` | 起動時に選択するバケットを指定します |
+| `--endpoint <url>` | `S3_ENDPOINT` を上書きします |
+| `--region <name>` | `AWS_REGION` を上書きします |
+| `--env <path>` | 読み込む env ファイルを指定します |
+| `--allow-write` | Web UI を起動直後から保存ONで開始します |
+| `--allow-create-bucket` | Web UI からのバケット作成を有効にします |
+
 ポートを変えたい場合:
 
 ```bash
@@ -133,9 +145,6 @@ npm run s3 -- put logs/example.json --yes
 | `--region <name>` | `AWS_REGION` を上書きします |
 | `--workdir <path>` | 作業ディレクトリを上書きします |
 | `--yes` | アップロード前の確認を省略します |
-| `--port <number>` | Web UI のポートを指定します |
-| `--allow-write` | Web UI からの新規ファイル作成・保存を有効にします |
-| `--allow-create-bucket` | Web UI からのバケット作成を有効にします |
 
 ## 設定
 
@@ -205,6 +214,7 @@ S3_FORCE_PATH_STYLE=true
 | バケット作成 | `s3:CreateBucket` |
 | オブジェクト一覧 | `s3:ListBucket` |
 | 表示・プレビュー | `s3:GetObject`, `s3:HeadObject` |
+| ダウンロード | `s3:GetObject` |
 | アップロード | `s3:PutObject` |
 
 読み取り中心の例:
@@ -277,8 +287,7 @@ S3_FORCE_PATH_STYLE=true
 ## 制限事項
 
 - 削除操作には対応していません。
-- 5 MiB を超えるオブジェクトは Web UI で表示・プレビューできません。
-- 大容量ファイルは CLI の `get` で明示的にダウンロードしてください。
+- 5 MiB を超えるオブジェクトは Web UI で表示・プレビューできません。ダウンロードは Web UI または CLI の `get` で行えます。
 - バイナリファイルの編集には対応していません。
 - 複数ユーザーで共有するサーバー用途は想定していません。
 - Prefix サジェストは、現在表示中のオブジェクト一覧から候補を作ります。

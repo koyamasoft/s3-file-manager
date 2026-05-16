@@ -127,6 +127,10 @@ button:disabled {
   gap: 8px;
 }
 
+.prefix-row {
+  position: relative;
+}
+
 input,
 select {
   min-width: 0;
@@ -144,6 +148,7 @@ select {
   position: relative;
 }
 
+.suggestions,
 .bucket-suggestions {
   position: absolute;
   z-index: 5;
@@ -158,6 +163,7 @@ select {
   box-shadow: 0 10px 30px rgba(17, 24, 39, 0.12);
 }
 
+.suggestion,
 .bucket-suggestion {
   width: 100%;
   min-height: 34px;
@@ -171,9 +177,15 @@ select {
   overflow-wrap: anywhere;
 }
 
+.suggestion:hover,
+.suggestion.active,
 .bucket-suggestion:hover,
 .bucket-suggestion.active {
   background: #e8f2ef;
+}
+
+.prefix-row .suggestions {
+  right: 74px;
 }
 
 .object-list-header {

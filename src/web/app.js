@@ -26,6 +26,7 @@ const elements = {
   bucketSearchInput: document.querySelector("#bucketSearchInput"),
   bucketSuggestions: document.querySelector("#bucketSuggestions"),
   prefixInput: document.querySelector("#prefixInput"),
+  prefixSuggestions: document.querySelector("#prefixSuggestions"),
   objectCount: document.querySelector("#objectCount"),
   objectList: document.querySelector("#objectList"),
   selectedKey: document.querySelector("#selectedKey"),
@@ -188,6 +189,61 @@ function renderBucketSuggestions(show = false) {
   }
 
   elements.bucketSuggestions.classList.remove("hidden");
+}
+
+function prefixNames() {
+  const names = new Set();
+  for (const object of state.objects) {
+    const parts = object.key.split("/");
+    let prefix = "";
+    for (let i = 0; i < parts.length - 1; i += 1) {
+      prefix += `${parts[i]}/`;
+      names.add(prefix);
+    }
+  }
+  return [...names].sort((a, b) => a.localeCompare(b));
+}
+
+function filteredPrefixNames() {
+  const query = elements.prefixInput.value.trim().toLowerCase();
+  if (!query) return prefixNames();
+  return prefixNames().filter((name) => name.toLowerCase().includes(query));
+}
+
+function renderPrefixSuggestions(show = false) {
+  elements.prefixSuggestions.replaceChildren();
+  const names = filteredPrefixNames();
+
+  if (!show || names.length === 0) {
+    elements.prefixSuggestions.classList.add("hidden");
+    return;
+  }
+
+  for (const name of names.slice(0, 20)) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "suggestion";
+    button.textContent = name;
+    button.classList.toggle("active", name === elements.prefixInput.value.trim());
+    button.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      selectPrefix(name);
+    });
+    elements.prefixSuggestions.append(button);
+  }
+
+  elements.prefixSuggestions.classList.remove("hidden");
+}
+
+async function selectPrefix(prefix) {
+  elements.prefixInput.value = prefix;
+  renderPrefixSuggestions(false);
+  try {
+    await loadObjects();
+    showToast(`Prefixを切り替えました: ${prefix || "(empty)"}`);
+  } catch (error) {
+    showToast(error.message, "error");
+  }
 }
 
 function renderBucketSearch() {
@@ -505,6 +561,7 @@ async function loadObjects() {
   const data = await requestJson(`/api/list?${params.toString()}`);
   state.objects = data.objects;
   renderObjectList();
+  renderPrefixSuggestions(false);
 }
 
 function clearSelection() {
@@ -776,11 +833,38 @@ async function boot() {
 
 elements.prefixForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  renderPrefixSuggestions(false);
   try {
     await loadObjects();
   } catch (error) {
     showToast(error.message, "error");
   }
+});
+
+elements.prefixInput.addEventListener("focus", () => {
+  renderPrefixSuggestions(true);
+});
+
+elements.prefixInput.addEventListener("input", () => {
+  renderPrefixSuggestions(true);
+});
+
+elements.prefixInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    const [first] = filteredPrefixNames();
+    if (first && first !== elements.prefixInput.value.trim()) {
+      event.preventDefault();
+      selectPrefix(first);
+    }
+  } else if (event.key === "Escape") {
+    renderPrefixSuggestions(false);
+  }
+});
+
+elements.prefixInput.addEventListener("blur", () => {
+  window.setTimeout(() => {
+    renderPrefixSuggestions(false);
+  }, 120);
 });
 
 elements.bucketSearchInput.addEventListener("focus", () => {

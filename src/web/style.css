@@ -289,6 +289,14 @@ select {
   overflow: hidden;
 }
 
+body.wide-editor .content-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body.wide-editor .meta-pane {
+  display: none;
+}
+
 .editor-pane,
 .meta-pane,
 .diff-pane {

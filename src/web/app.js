@@ -14,6 +14,7 @@ const state = {
   csrfToken: null,
   allowWrite: false,
   allowCreateBucket: false,
+  wideEditor: false,
 };
 
 const elements = {
@@ -35,6 +36,7 @@ const elements = {
   addEnvRowButton: document.querySelector("#addEnvRowButton"),
   previewPane: document.querySelector("#previewPane"),
   writeModeButton: document.querySelector("#writeModeButton"),
+  wideEditorButton: document.querySelector("#wideEditorButton"),
   toggleEnvModeButton: document.querySelector("#toggleEnvModeButton"),
   saveButton: document.querySelector("#saveButton"),
   diffButton: document.querySelector("#diffButton"),
@@ -91,6 +93,12 @@ function setWarning(message) {
 
 function updateConnectionLabel() {
   elements.connectionLabel.textContent = `${state.selectedBucket ?? "バケット未選択"} · ${state.config?.endpoint ?? "AWS S3"}`;
+}
+
+function updateEditorLayout() {
+  document.body.classList.toggle("wide-editor", state.wideEditor);
+  elements.wideEditorButton.textContent = state.wideEditor ? "標準幅" : "拡大";
+  elements.wideEditorButton.classList.toggle("active", state.wideEditor);
 }
 
 function updateWriteControls() {
@@ -744,6 +752,11 @@ elements.writeModeButton.addEventListener("click", async () => {
   }
 });
 
+elements.wideEditorButton.addEventListener("click", () => {
+  state.wideEditor = !state.wideEditor;
+  updateEditorLayout();
+});
+
 elements.toggleEnvModeButton.addEventListener("click", toggleEnvMode);
 
 elements.saveButton.addEventListener("click", async () => {
@@ -761,3 +774,4 @@ elements.closeDiffButton.addEventListener("click", () => {
 });
 
 boot();
+updateEditorLayout();

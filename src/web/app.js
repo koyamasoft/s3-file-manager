@@ -147,7 +147,9 @@ function renderObjectList() {
     meta.textContent = `${object.sizeLabel} · ${object.lastModified ?? "-"}`;
 
     button.append(key, meta);
-    button.addEventListener("click", () => openObject(object.key));
+    button.addEventListener("click", () => {
+      openObject(object.key).catch((error) => showToast(error.message, "error"));
+    });
     item.append(button);
     elements.objectList.append(item);
   }

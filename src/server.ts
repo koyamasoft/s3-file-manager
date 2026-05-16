@@ -16,6 +16,11 @@ import {
   listObjects,
   uploadObject,
 } from "./s3.js";
+import {
+  assertValidBucketName,
+  isOverWebObjectLimit,
+  webObjectLimitLabel,
+} from "./validation.js";
 
 type ServerOptions = GlobalOptions & {
   port: number;
@@ -103,7 +108,10 @@ function sendJson(response: ServerResponse, status: number, body: JsonValue): vo
 }
 
 function sendError(response: ServerResponse, status: number, error: unknown): void {
-  sendJson(response, status, {
+  const statusCode = typeof (error as { statusCode?: unknown })?.statusCode === "number"
+    ? (error as { statusCode: number }).statusCode
+    : status;
+  sendJson(response, statusCode, {
     error: error instanceof Error ? error.message : String(error),
   });
 }
@@ -203,6 +211,15 @@ function attachmentName(key: string): string {
   return basename(key).replace(/["\\\r\n]/g, "_") || "object";
 }
 
+function assertWebObjectSize(contentLength: number | undefined, key: string): void {
+  if (isOverWebObjectLimit(contentLength)) {
+    throw Object.assign(
+      new Error(`Object is too large for Web UI preview/editing: ${key}. Limit: ${webObjectLimitLabel()}.`),
+      { statusCode: 413 },
+    );
+  }
+}
+
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const config = getConfig(options, false);
@@ -269,6 +286,7 @@ async function main(): Promise<void> {
           const parsed = JSON.parse(rawBody) as { bucket?: string };
           const bucket = parsed.bucket?.trim();
           if (!bucket) throw new Error("bucket is required.");
+          assertValidBucketName(bucket);
           await withFreshS3(() => createBucket(client, bucket, config.region, !!config.endpoint));
           sendJson(response, 200, { bucket });
           return;
@@ -324,7 +342,10 @@ async function main(): Promise<void> {
         const bucket = bucketFromRequest(requestUrl, config.bucket ?? "");
         if (!bucket) throw new Error("bucket is required.");
 
+        const metadataBeforeDownload = await withFreshS3(() => headObject(client, bucket, key));
+        assertWebObjectSize(metadataBeforeDownload.contentLength, key);
         const { body, metadata } = await withFreshS3(() => downloadObject(client, bucket, key));
+        assertWebObjectSize(body.byteLength, key);
         const text = isTextKey(key, metadata.contentType);
         sendJson(response, 200, {
           metadata,
@@ -340,7 +361,10 @@ async function main(): Promise<void> {
         const bucket = bucketFromRequest(requestUrl, config.bucket ?? "");
         if (!bucket) throw new Error("bucket is required.");
 
+        const metadataBeforeDownload = await withFreshS3(() => headObject(client, bucket, key));
+        assertWebObjectSize(metadataBeforeDownload.contentLength, key);
         const { body, metadata } = await withFreshS3(() => downloadObject(client, bucket, key));
+        assertWebObjectSize(body.byteLength, key);
         const contentType = metadata.contentType ?? "application/octet-stream";
         const inlinePreview = isInlinePreviewContentType(contentType);
         response.writeHead(200, {

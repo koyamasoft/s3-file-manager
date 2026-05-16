@@ -2,7 +2,7 @@
 
 S3 / MinIO / MiniStack などの S3 互換ストレージを、安全に確認・編集するためのローカル専用 Web UI / CLI ツールです。
 
-AWS キーはブラウザに渡しません。localhost の Node.js サーバーが AWS SDK 経由で S3 にアクセスします。Web UI は `127.0.0.1` のみで待ち受け、起動直後は保存OFFです。
+AWS 認証情報はブラウザに渡しません。localhost の Node.js サーバーが AWS SDK 経由で S3 にアクセスします。Web UI は `127.0.0.1` のみで待ち受け、起動直後は保存OFFです。
 
 ![S3 File Manager Web UI](docs/screenshot.svg)
 
@@ -33,7 +33,7 @@ npm run web
 http://127.0.0.1:5174
 ```
 
-AWS S3 を使う場合は、AWS CLI / AWS SDK が読める認証情報を先に用意してください。
+AWS S3 を使う場合は、AWS CLI / AWS SDK が参照できる認証情報を先に用意してください。
 
 ```bash
 aws configure
@@ -269,7 +269,7 @@ S3_FORCE_PATH_STYLE=true
 
 - AWS S3 接続時は、本番環境の誤操作を避けるため警告バナーを表示します。
 - バイナリと思われるオブジェクトは、`show` や `edit` の対象にしません。
-- rawプレビューは JPEG、PNG、WebP、GIF のみ inline 表示します。
+- raw プレビューでは JPEG、PNG、WebP、GIF のみ inline 表示します。
 
 ## 制限事項
 
@@ -283,7 +283,7 @@ S3_FORCE_PATH_STYLE=true
 
 Web UI と CLI は、認証期限切れ系エラーを検知した場合に S3 クライアントを作り直し、同じ操作を1回だけ自動で再試行します。
 
-AWS SSO のキャッシュ、`~/.aws/credentials`、`.env` の一時認証情報を裏で更新した場合、Web UIを再起動せずに復帰できることがあります。
+AWS SSO のキャッシュ、`~/.aws/credentials`、`.env` の一時認証情報を裏で更新した場合、Web UI を再起動せずに復帰できることがあります。
 
 ## テスト
 

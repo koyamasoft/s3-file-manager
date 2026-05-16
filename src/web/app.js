@@ -332,6 +332,41 @@ function renderPreview(key, metadata) {
 function diffLines(before, after) {
   const a = before.split("\n");
   const b = after.split("\n");
+
+  if (a.length * b.length > 1_000_000) {
+    return simpleDiffLines(a, b);
+  }
+
+  const dp = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
+
+  for (let i = a.length - 1; i >= 0; i -= 1) {
+    for (let j = b.length - 1; j >= 0; j -= 1) {
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+
+  const rows = [];
+  let i = 0;
+  let j = 0;
+
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && a[i] === b[j]) {
+      rows.push(`  ${a[i]}`);
+      i += 1;
+      j += 1;
+    } else if (i < a.length && (j >= b.length || dp[i + 1][j] >= dp[i][j + 1])) {
+      rows.push(`- ${a[i]}`);
+      i += 1;
+    } else if (j < b.length) {
+      rows.push(`+ ${b[j]}`);
+      j += 1;
+    }
+  }
+
+  return rows.join("\n");
+}
+
+function simpleDiffLines(a, b) {
   const rows = [];
   const max = Math.max(a.length, b.length);
 

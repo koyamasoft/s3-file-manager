@@ -209,7 +209,7 @@ function directObjects() {
   const prefix = currentPrefix();
   const folders = new Set(childPrefixes());
   return visibleObjectRows().filter((object) => {
-    if (!object.key.startsWith(prefix)) return true;
+    if (!object.key.startsWith(prefix)) return false;
     const rest = object.key.slice(prefix.length);
     return !rest.includes("/") && !folders.has(object.key);
   });

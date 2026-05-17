@@ -228,8 +228,22 @@ select {
 }
 
 .object-list button:hover,
-.object-list button.active {
+.object-list button.active,
+.object-list button.prefix-folder:hover {
   background: #e8f2ef;
+}
+
+.object-list button.prefix-folder {
+  min-height: 46px;
+  background: #fbfcfe;
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.object-list button.prefix-up {
+  min-height: 42px;
+  background: #fff;
+  color: var(--muted);
 }
 
 .object-key {
@@ -488,6 +502,16 @@ dd {
   margin-top: 4px;
   font-size: 13px;
   overflow-wrap: anywhere;
+}
+
+.content-type-control {
+  display: grid;
+  gap: 8px;
+}
+
+.content-type-control select,
+.content-type-control input {
+  width: 100%;
 }
 
 .diff-pane {

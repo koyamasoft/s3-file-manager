@@ -82,6 +82,25 @@
               <div>
                 <dt>Content-Type</dt>
                 <dd id="metaContentType">-</dd>
+                <dd class="content-type-control">
+                  <select id="contentTypeSelect" disabled>
+                    <option value="">自動判定</option>
+                    <option value="application/json">application/json</option>
+                    <option value="text/plain; charset=utf-8">text/plain; charset=utf-8</option>
+                    <option value="text/csv; charset=utf-8">text/csv; charset=utf-8</option>
+                    <option value="text/markdown; charset=utf-8">text/markdown; charset=utf-8</option>
+                    <option value="application/yaml">application/yaml</option>
+                    <option value="text/html; charset=utf-8">text/html; charset=utf-8</option>
+                    <option value="text/css; charset=utf-8">text/css; charset=utf-8</option>
+                    <option value="text/javascript; charset=utf-8">text/javascript; charset=utf-8</option>
+                    <option value="image/jpeg">image/jpeg</option>
+                    <option value="image/png">image/png</option>
+                    <option value="image/webp">image/webp</option>
+                    <option value="image/gif">image/gif</option>
+                    <option value="application/octet-stream">application/octet-stream</option>
+                  </select>
+                  <input id="contentTypeInput" type="text" placeholder="custom/type">
+                </dd>
               </div>
               <div>
                 <dt>Size</dt>

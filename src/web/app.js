@@ -49,6 +49,8 @@ const elements = {
   toast: document.querySelector("#toast"),
   metaBucket: document.querySelector("#metaBucket"),
   metaContentType: document.querySelector("#metaContentType"),
+  contentTypeSelect: document.querySelector("#contentTypeSelect"),
+  contentTypeInput: document.querySelector("#contentTypeInput"),
   metaSize: document.querySelector("#metaSize"),
   metaEtag: document.querySelector("#metaEtag"),
   metaLastModified: document.querySelector("#metaLastModified"),
@@ -123,10 +125,15 @@ function updateDownloadButton() {
 }
 
 function updateWriteControls() {
+  const canSaveSelection = !!state.selectedKey &&
+    (state.isNew || !!state.metadata) &&
+    elements.previewPane.classList.contains("hidden");
   elements.newButton.disabled = !state.allowWrite;
   elements.newBucketButton.disabled = !state.allowCreateBucket;
-  elements.saveButton.disabled = !state.allowWrite || !state.selectedKey || (!state.metadata && !state.isNew);
+  elements.saveButton.disabled = !state.allowWrite || !canSaveSelection;
   elements.addEnvRowButton.disabled = !state.allowWrite;
+  elements.contentTypeSelect.disabled = !state.allowWrite || !canSaveSelection;
+  elements.contentTypeInput.disabled = !state.allowWrite || !canSaveSelection;
   elements.writeModeButton.textContent = state.allowWrite ? "保存 ON" : "保存 OFF";
   elements.writeModeButton.classList.toggle("active", state.allowWrite);
 
@@ -140,38 +147,125 @@ function updateWriteControls() {
   updateDownloadButton();
 }
 
+function setContentTypeControl(contentType) {
+  const value = contentType ?? "";
+  const hasOption = [...elements.contentTypeSelect.options].some((option) => option.value === value);
+  elements.contentTypeSelect.value = hasOption ? value : "";
+  elements.contentTypeInput.value = value;
+}
+
+function updateContentType(value) {
+  const normalized = value.trim();
+  state.currentContentType = normalized || null;
+  elements.metaContentType.textContent = normalized || "-";
+  setContentTypeControl(normalized);
+}
+
 function setMetadata(metadata) {
   elements.metaBucket.textContent = state.selectedBucket ?? "-";
   elements.metaContentType.textContent = metadata?.contentType ?? "-";
+  setContentTypeControl(state.currentContentType ?? metadata?.contentType ?? "");
   elements.metaSize.textContent = formatBytes(metadata?.contentLength);
   elements.metaEtag.textContent = metadata?.etag ?? "-";
   elements.metaLastModified.textContent = metadata?.lastModified ?? "-";
+  updateWriteControls();
+}
+
+function currentPrefix() {
+  return elements.prefixInput.value.trim().replace(/^\/+/, "");
+}
+
+function parentPrefix(prefix) {
+  const normalized = prefix.replace(/\/+$/, "");
+  const index = normalized.lastIndexOf("/");
+  return index === -1 ? "" : `${normalized.slice(0, index)}/`;
+}
+
+function visibleObjectRows() {
+  const prefix = currentPrefix();
+  return state.objects.filter((object) => object.key !== prefix);
+}
+
+function childPrefixes() {
+  const prefix = currentPrefix();
+  const names = new Set();
+
+  for (const object of visibleObjectRows()) {
+    if (!object.key.startsWith(prefix)) continue;
+    const rest = object.key.slice(prefix.length);
+    const slash = rest.indexOf("/");
+    if (slash !== -1) {
+      names.add(`${prefix}${rest.slice(0, slash + 1)}`);
+    }
+  }
+
+  return [...names].sort((a, b) => a.localeCompare(b));
+}
+
+function directObjects() {
+  const prefix = currentPrefix();
+  const folders = new Set(childPrefixes());
+  return visibleObjectRows().filter((object) => {
+    if (!object.key.startsWith(prefix)) return true;
+    const rest = object.key.slice(prefix.length);
+    return !rest.includes("/") && !folders.has(object.key);
+  });
+}
+
+function appendObjectButton({ className = "", label, meta, active = false, onClick }) {
+  const item = document.createElement("li");
+  const button = document.createElement("button");
+  button.type = "button";
+  if (className) button.className = className;
+  button.classList.toggle("active", active);
+
+  const key = document.createElement("span");
+  key.className = "object-key";
+  key.textContent = label;
+
+  const detail = document.createElement("span");
+  detail.className = "object-meta";
+  detail.textContent = meta;
+
+  button.append(key, detail);
+  button.addEventListener("click", onClick);
+  item.append(button);
+  elements.objectList.append(item);
 }
 
 function renderObjectList() {
-  elements.objectCount.textContent = String(state.objects.length);
+  const folders = childPrefixes();
+  const objects = directObjects();
+  elements.objectCount.textContent = String(objects.length + folders.length);
   elements.objectList.replaceChildren();
 
-  for (const object of state.objects) {
-    const item = document.createElement("li");
-    const button = document.createElement("button");
-    button.type = "button";
-    button.classList.toggle("active", object.key === state.selectedKey);
-
-    const key = document.createElement("span");
-    key.className = "object-key";
-    key.textContent = object.key;
-
-    const meta = document.createElement("span");
-    meta.className = "object-meta";
-    meta.textContent = `${object.sizeLabel} · ${object.lastModified ?? "-"}`;
-
-    button.append(key, meta);
-    button.addEventListener("click", () => {
-      openObject(object.key).catch((error) => showToast(error.message, "error"));
+  if (currentPrefix()) {
+    appendObjectButton({
+      className: "prefix-up",
+      label: "../",
+      meta: "親Prefixへ移動",
+      onClick: () => selectPrefix(parentPrefix(currentPrefix())),
     });
-    item.append(button);
-    elements.objectList.append(item);
+  }
+
+  for (const prefix of folders) {
+    appendObjectButton({
+      className: "prefix-folder",
+      label: prefix.slice(currentPrefix().length),
+      meta: prefix,
+      onClick: () => selectPrefix(prefix),
+    });
+  }
+
+  for (const object of objects) {
+    appendObjectButton({
+      label: object.key,
+      meta: `${object.sizeLabel} · ${object.lastModified ?? "-"}`,
+      active: object.key === state.selectedKey,
+      onClick: () => {
+        openObject(object.key).catch((error) => showToast(error.message, "error"));
+      },
+    });
   }
 }
 
@@ -570,7 +664,7 @@ async function loadBuckets() {
 }
 
 async function loadObjects() {
-  const prefix = elements.prefixInput.value.trim();
+  const prefix = currentPrefix();
   if (!state.selectedBucket) {
     state.objects = [];
     renderObjectList();
@@ -666,6 +760,7 @@ async function openObject(key) {
   renderPreview(key, state.metadata);
   setMode("binary");
   updateEnvModeButton();
+  updateWriteControls();
 }
 
 async function saveObject(force = false) {
@@ -680,7 +775,7 @@ async function saveObject(force = false) {
     bucket: state.selectedBucket,
     content: getCurrentContent(),
     etag: state.metadata?.etag,
-    contentType: state.currentContentType,
+    contentType: state.currentContentType || undefined,
     create: state.isNew,
     force,
   };
@@ -692,6 +787,7 @@ async function saveObject(force = false) {
       body: JSON.stringify(body),
     });
     state.metadata = result.metadata;
+    state.currentContentType = result.metadata?.contentType ?? state.currentContentType;
     state.isNew = false;
     state.originalContent = getCurrentContent();
     setMetadata(state.metadata);
@@ -962,6 +1058,14 @@ elements.wideEditorButton.addEventListener("click", () => {
 });
 
 elements.toggleEnvModeButton.addEventListener("click", toggleEnvMode);
+
+elements.contentTypeSelect.addEventListener("change", () => {
+  updateContentType(elements.contentTypeSelect.value);
+});
+
+elements.contentTypeInput.addEventListener("input", () => {
+  updateContentType(elements.contentTypeInput.value);
+});
 
 elements.saveButton.addEventListener("click", async () => {
   if (!window.confirm("この内容をS3へアップロードしますか？")) return;

@@ -48,7 +48,6 @@ const elements = {
   closeDiffButton: document.querySelector("#closeDiffButton"),
   toast: document.querySelector("#toast"),
   metaBucket: document.querySelector("#metaBucket"),
-  metaContentType: document.querySelector("#metaContentType"),
   contentTypeSelect: document.querySelector("#contentTypeSelect"),
   contentTypeInput: document.querySelector("#contentTypeInput"),
   metaSize: document.querySelector("#metaSize"),
@@ -150,20 +149,24 @@ function updateWriteControls() {
 function setContentTypeControl(contentType) {
   const value = contentType ?? "";
   const hasOption = [...elements.contentTypeSelect.options].some((option) => option.value === value);
-  elements.contentTypeSelect.value = hasOption ? value : "";
+  elements.contentTypeSelect.value = hasOption ? value : value ? "__custom__" : "";
   elements.contentTypeInput.value = value;
+  elements.contentTypeInput.classList.toggle("hidden", elements.contentTypeSelect.value !== "__custom__");
 }
 
 function updateContentType(value) {
   const normalized = value.trim();
   state.currentContentType = normalized || null;
-  elements.metaContentType.textContent = normalized || "-";
-  setContentTypeControl(normalized);
+  elements.contentTypeInput.value = normalized;
+  elements.contentTypeSelect.value = normalized &&
+    [...elements.contentTypeSelect.options].some((option) => option.value === normalized)
+    ? normalized
+    : normalized ? "__custom__" : "";
+  elements.contentTypeInput.classList.toggle("hidden", elements.contentTypeSelect.value !== "__custom__");
 }
 
 function setMetadata(metadata) {
   elements.metaBucket.textContent = state.selectedBucket ?? "-";
-  elements.metaContentType.textContent = metadata?.contentType ?? "-";
   setContentTypeControl(state.currentContentType ?? metadata?.contentType ?? "");
   elements.metaSize.textContent = formatBytes(metadata?.contentLength);
   elements.metaEtag.textContent = metadata?.etag ?? "-";
@@ -1060,6 +1063,12 @@ elements.wideEditorButton.addEventListener("click", () => {
 elements.toggleEnvModeButton.addEventListener("click", toggleEnvMode);
 
 elements.contentTypeSelect.addEventListener("change", () => {
+  if (elements.contentTypeSelect.value === "__custom__") {
+    elements.contentTypeInput.classList.remove("hidden");
+    elements.contentTypeInput.focus();
+    state.currentContentType = elements.contentTypeInput.value.trim() || null;
+    return;
+  }
   updateContentType(elements.contentTypeSelect.value);
 });
 

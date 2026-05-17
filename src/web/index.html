@@ -81,7 +81,6 @@
               </div>
               <div>
                 <dt>Content-Type</dt>
-                <dd id="metaContentType">-</dd>
                 <dd class="content-type-control">
                   <select id="contentTypeSelect" disabled>
                     <option value="">自動判定</option>
@@ -89,17 +88,23 @@
                     <option value="text/plain; charset=utf-8">text/plain; charset=utf-8</option>
                     <option value="text/csv; charset=utf-8">text/csv; charset=utf-8</option>
                     <option value="text/markdown; charset=utf-8">text/markdown; charset=utf-8</option>
+                    <option value="application/xml">application/xml</option>
                     <option value="application/yaml">application/yaml</option>
                     <option value="text/html; charset=utf-8">text/html; charset=utf-8</option>
                     <option value="text/css; charset=utf-8">text/css; charset=utf-8</option>
                     <option value="text/javascript; charset=utf-8">text/javascript; charset=utf-8</option>
+                    <option value="application/x-ndjson">application/x-ndjson</option>
+                    <option value="application/pdf">application/pdf</option>
+                    <option value="application/zip">application/zip</option>
                     <option value="image/jpeg">image/jpeg</option>
                     <option value="image/png">image/png</option>
+                    <option value="image/svg+xml">image/svg+xml</option>
                     <option value="image/webp">image/webp</option>
                     <option value="image/gif">image/gif</option>
                     <option value="application/octet-stream">application/octet-stream</option>
+                    <option value="__custom__">カスタム...</option>
                   </select>
-                  <input id="contentTypeInput" type="text" placeholder="custom/type">
+                  <input id="contentTypeInput" class="hidden" type="text" placeholder="custom/type">
                 </dd>
               </div>
               <div>

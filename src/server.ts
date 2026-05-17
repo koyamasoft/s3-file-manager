@@ -19,6 +19,7 @@ import {
   uploadObject,
 } from "./s3.js";
 import {
+  assertValidContentType,
   assertValidBucketName,
   isOverWebObjectLimit,
   webObjectLimitLabel,
@@ -436,6 +437,7 @@ async function main(): Promise<void> {
         };
         if (!parsed.key) throw new Error("key is required.");
         if (typeof parsed.content !== "string") throw new Error("content is required.");
+        assertValidContentType(parsed.contentType);
 
         const key = parsed.key;
         const content = parsed.content;

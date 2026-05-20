@@ -897,10 +897,10 @@ test("server chooses inline or attachment disposition for /api/raw by content ty
       createS3Client: () => fakeClient() as never,
       headObject: async (_client, _bucket, key) => metadata(key),
       downloadObject: async (_client, _bucket, key) => ({
-        body: Buffer.from(key.endsWith(".png") ? "png-bytes" : "text"),
+        body: Buffer.from(key.endsWith(".png") ? "png-bytes" : key.endsWith(".pdf") ? "pdf-bytes" : "text"),
         metadata: {
           ...metadata(key),
-          contentType: key.endsWith(".png") ? "image/png" : "text/plain",
+          contentType: key.endsWith(".png") ? "image/png" : key.endsWith(".pdf") ? "text/plain" : "text/plain",
         },
       }),
     },
@@ -912,10 +912,22 @@ test("server chooses inline or attachment disposition for /api/raw by content ty
     assert.equal(inline.headers["content-type"], "image/png");
     assert.equal(inline.headers["content-disposition"], "inline");
 
+    const pdf = await requestRaw(port, "/api/raw?key=manual.pdf");
+    assert.equal(pdf.statusCode, 200);
+    assert.equal(pdf.headers["content-type"], "application/pdf");
+    assert.equal(pdf.headers["content-disposition"], "inline");
+
     const attachment = await requestRaw(port, "/api/raw?key=note.txt");
     assert.equal(attachment.statusCode, 200);
     assert.equal(attachment.headers["content-type"], "application/octet-stream");
-    assert.equal(attachment.headers["content-disposition"], "attachment; filename=\"note.txt\"");
+    assert.equal(attachment.headers["content-disposition"], "attachment; filename=\"note.txt\"; filename*=UTF-8''note.txt");
+
+    const unicodeAttachment = await requestRaw(port, `/api/raw?key=${encodeURIComponent("資料.txt")}`);
+    assert.equal(unicodeAttachment.statusCode, 200);
+    assert.equal(
+      unicodeAttachment.headers["content-disposition"],
+      "attachment; filename=\"__.txt\"; filename*=UTF-8''%E8%B3%87%E6%96%99.txt",
+    );
   } finally {
     await closeServer(server);
   }
@@ -1061,7 +1073,7 @@ test("server sanitizes attachment filenames on /api/download", async () => {
 
     assert.equal(response.statusCode, 200);
     assert.equal(response.body, "hello");
-    assert.equal(response.headers["content-disposition"], "attachment; filename=\"bad____name.txt\"; filename*=UTF-8''bad____name.txt");
+    assert.equal(response.headers["content-disposition"], "attachment; filename=\"bad____name.txt\"; filename*=UTF-8''bad%22%5C%0D%0Aname.txt");
     assert.equal(response.headers["x-content-type-options"], "nosniff");
   } finally {
     await closeServer(server);

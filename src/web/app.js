@@ -592,20 +592,34 @@ function isPreviewImageType(contentType) {
   return ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(normalized);
 }
 
+function isPreviewPdfType(key, contentType) {
+  const normalized = contentType.toLowerCase().split(";")[0].trim();
+  return normalized === "application/pdf" || key.toLowerCase().endsWith(".pdf");
+}
+
 function renderPreview(key, metadata) {
   elements.previewPane.replaceChildren();
   const contentType = metadata?.contentType ?? "";
+  const params = new URLSearchParams({
+    bucket: state.selectedBucket,
+    key,
+    t: String(Date.now()),
+  });
 
   if (isPreviewImageType(contentType)) {
     const image = document.createElement("img");
     image.alt = key;
-    const params = new URLSearchParams({
-      bucket: state.selectedBucket,
-      key,
-      t: String(Date.now()),
-    });
     image.src = `/api/raw?${params.toString()}`;
     elements.previewPane.append(image);
+    return;
+  }
+
+  if (isPreviewPdfType(key, contentType)) {
+    const frame = document.createElement("iframe");
+    frame.className = "pdf-preview";
+    frame.title = key;
+    frame.src = `/api/raw?${params.toString()}`;
+    elements.previewPane.append(frame);
     return;
   }
 

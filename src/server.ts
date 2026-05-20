@@ -246,21 +246,23 @@ function validateWriteRequest(request: IncomingMessage, port: number, csrfToken:
     sameToken(headerValue(request, "x-s3fm-csrf"), csrfToken);
 }
 
-function isInlinePreviewContentType(contentType: string | undefined): boolean {
+function isInlinePreviewContentType(contentType: string | undefined, key = ""): boolean {
   const normalized = contentType?.toLowerCase().split(";")[0].trim();
   return normalized === "image/jpeg" ||
     normalized === "image/png" ||
     normalized === "image/webp" ||
-    normalized === "image/gif";
+    normalized === "image/gif" ||
+    normalized === "application/pdf" ||
+    extname(key).toLowerCase() === ".pdf";
 }
 
 function attachmentName(key: string): string {
-  return basename(key).replace(/["\\\r\n]/g, "_") || "object";
+  return basename(key).replace(/[^\x20-\x7e]|["\\\r\n]/g, "_") || "object";
 }
 
 function contentDispositionAttachment(key: string): string {
   const fallback = attachmentName(key);
-  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(fallback)}`;
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(basename(key) || "object")}`;
 }
 
 function assertWebObjectSize(contentLength: number | undefined, key: string): void {
@@ -469,11 +471,15 @@ export function createRequestHandler({
         assertWebObjectSize(metadataBeforeDownload.contentLength, key);
         const { body, metadata } = await withFreshS3(() => deps.downloadObject(client, bucket, key));
         assertWebObjectSize(body.byteLength, key);
-        const contentType = metadata.contentType ?? "application/octet-stream";
-        const inlinePreview = isInlinePreviewContentType(contentType);
+        const normalizedContentType = metadata.contentType?.toLowerCase().split(";")[0].trim();
+        const contentType = extname(key).toLowerCase() === ".pdf" &&
+          (!normalizedContentType || !normalizedContentType.startsWith("image/"))
+          ? "application/pdf"
+          : metadata.contentType ?? "application/octet-stream";
+        const inlinePreview = isInlinePreviewContentType(contentType, key);
         response.writeHead(200, {
           "Content-Type": inlinePreview ? contentType : "application/octet-stream",
-          "Content-Disposition": inlinePreview ? "inline" : `attachment; filename="${attachmentName(key)}"`,
+          "Content-Disposition": inlinePreview ? "inline" : contentDispositionAttachment(key),
           "Cache-Control": "no-store",
           "X-Content-Type-Options": "nosniff",
         });

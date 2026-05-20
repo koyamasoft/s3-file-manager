@@ -10,7 +10,7 @@ AWS 認証情報はブラウザに渡しません。localhost の Node.js サー
 
 - バケット検索と切り替え
 - Prefix 検索、サジェスト、階層ナビゲーション
-- オブジェクト一覧、メタデータ確認、画像プレビュー
+- オブジェクト一覧、メタデータ確認、画像/PDFプレビュー
 - Web UI からのオブジェクトダウンロード
 - テキストファイルの表示・編集・Content-Type変更・差分確認・アップロード
 - ローカルファイルの単体/複数アップロード
@@ -107,7 +107,7 @@ Web UI でできること:
 | テキスト編集 | JSON、CSV、Markdown、YAML などをブラウザ上で編集します |
 | env編集 | `.env`, `.env.local`, `*.env` を key/value テーブルまたは通常テキストとして編集します |
 | 差分確認 | 開いた時点の内容と現在の編集内容を比較します |
-| 画像プレビュー | JPEG、PNG、WebP、GIF を表示します |
+| 画像/PDFプレビュー | JPEG、PNG、WebP、GIF、PDF を表示します |
 | バケット作成 | `--allow-create-bucket` 指定時のみバケットを作成します |
 
 ## CLI
@@ -288,7 +288,7 @@ S3_FORCE_PATH_STYLE=true
 - AWS S3 接続時は、本番環境の誤操作を避けるため警告バナーを表示します。
 - Web UI の表示・プレビューは 5 MiB までのオブジェクトに制限しています。
 - バイナリと思われるオブジェクトは、`show` や `edit` の対象にしません。
-- raw プレビューでは JPEG、PNG、WebP、GIF のみ inline 表示します。
+- raw プレビューでは JPEG、PNG、WebP、GIF、PDF を inline 表示します。
 
 ## 制限事項
 

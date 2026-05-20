@@ -2,14 +2,20 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer, request as httpRequest, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { Readable } from "node:stream";
 import { createRequestHandler, type ServerOptions } from "./server.js";
 import type { ToolConfig } from "./config.js";
+import type { ObjectMetadata } from "./s3.js";
+import { MAX_WEB_OBJECT_BYTES } from "./validation.js";
 
 type TestResponse = {
   statusCode: number;
   body: string;
+  headers: Record<string, string | string[] | undefined>;
   json: Record<string, unknown>;
 };
+
+type RawTestResponse = Omit<TestResponse, "json">;
 
 type TestRequestOptions = {
   method?: string;
@@ -40,6 +46,31 @@ function fakeClient() {
   return { destroy() {} };
 }
 
+function metadata(key: string, etag = "\"current\""): ObjectMetadata {
+  return {
+    key,
+    etag,
+    contentType: "text/plain",
+    contentLength: 5,
+    lastModified: "2026-05-20T00:00:00.000Z",
+  };
+}
+
+function missingObjectError(): Error {
+  return Object.assign(new Error("not found"), {
+    name: "NoSuchKey",
+    $metadata: { httpStatusCode: 404 },
+  });
+}
+
+function writeHeaders(port: number): Record<string, string> {
+  return {
+    "Content-Type": "application/json",
+    "X-S3FM-CSRF": "test-token",
+    Origin: `http://127.0.0.1:${port}`,
+  };
+}
+
 async function startTestServer(
   options: ServerOptions,
   parameters: Parameters<typeof createRequestHandler>[0],
@@ -67,8 +98,20 @@ async function requestJson(
   path: string,
   options: TestRequestOptions = {},
 ): Promise<TestResponse> {
+  const response = await requestRaw(port, path, options);
+  return {
+    ...response,
+    json: JSON.parse(response.body) as Record<string, unknown>,
+  };
+}
+
+async function requestRaw(
+  port: number,
+  path: string,
+  options: TestRequestOptions = {},
+): Promise<RawTestResponse> {
   const body = options.body ?? "";
-  return await new Promise<TestResponse>((resolveRequest, reject) => {
+  return await new Promise<RawTestResponse>((resolveRequest, reject) => {
     const request = httpRequest({
       hostname: "127.0.0.1",
       port,
@@ -87,7 +130,7 @@ async function requestJson(
         resolveRequest({
           statusCode: response.statusCode ?? 0,
           body,
-          json: JSON.parse(body) as Record<string, unknown>,
+          headers: response.headers,
         });
       });
     });
@@ -207,6 +250,416 @@ test("server checks local Origin for write requests", async () => {
     });
     assert.equal(localOrigin.statusCode, 200);
     assert.equal(localOrigin.json.allowWrite, true);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("server rejects /api/save when writing is disabled", async () => {
+  const options = baseOptions();
+  let uploads = 0;
+  const { server, port } = await startTestServer(options, {
+    options,
+    config: { ...baseConfig, bucket: "my-bucket" },
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+      uploadObject: async () => {
+        uploads += 1;
+      },
+    },
+  });
+
+  try {
+    const response = await requestJson(port, "/api/save", {
+      method: "POST",
+      headers: writeHeaders(port),
+      body: JSON.stringify({ key: "notes/readme.txt", content: "hello", etag: "\"current\"" }),
+    });
+
+    assert.equal(response.statusCode, 403);
+    assert.equal(response.json.error, "Writing is disabled. Start with --allow-write to enable uploads.");
+    assert.equal(uploads, 0);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("server rejects /api/save when the remote ETag changed", async () => {
+  const options = { ...baseOptions(), allowWrite: true };
+  let uploads = 0;
+  const { server, port } = await startTestServer(options, {
+    options,
+    config: { ...baseConfig, bucket: "my-bucket" },
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+      headObject: async (_client, _bucket, key) => metadata(key, "\"remote\""),
+      uploadObject: async () => {
+        uploads += 1;
+      },
+    },
+  });
+
+  try {
+    const response = await requestJson(port, "/api/save", {
+      method: "POST",
+      headers: writeHeaders(port),
+      body: JSON.stringify({ key: "notes/readme.txt", content: "hello", etag: "\"opened\"" }),
+    });
+
+    assert.equal(response.statusCode, 409);
+    assert.equal(response.json.error, "Remote object changed after it was opened.");
+    assert.deepEqual(response.json.current, metadata("notes/readme.txt", "\"remote\""));
+    assert.equal(uploads, 0);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("server rejects create saves when the object already exists", async () => {
+  const options = { ...baseOptions(), allowWrite: true };
+  let uploads = 0;
+  const { server, port } = await startTestServer(options, {
+    options,
+    config: { ...baseConfig, bucket: "my-bucket" },
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+      headObject: async (_client, _bucket, key) => metadata(key),
+      uploadObject: async () => {
+        uploads += 1;
+      },
+    },
+  });
+
+  try {
+    const response = await requestJson(port, "/api/save", {
+      method: "POST",
+      headers: writeHeaders(port),
+      body: JSON.stringify({ key: "notes/new.txt", content: "hello", create: true }),
+    });
+
+    assert.equal(response.statusCode, 409);
+    assert.equal(response.json.error, "Object already exists.");
+    assert.deepEqual(response.json.current, metadata("notes/new.txt"));
+    assert.equal(uploads, 0);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("server rejects invalid Content-Type on /api/save before uploading", async () => {
+  const options = { ...baseOptions(), allowWrite: true };
+  let heads = 0;
+  let uploads = 0;
+  const { server, port } = await startTestServer(options, {
+    options,
+    config: { ...baseConfig, bucket: "my-bucket" },
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+      headObject: async (_client, _bucket, key) => {
+        heads += 1;
+        return metadata(key);
+      },
+      uploadObject: async () => {
+        uploads += 1;
+      },
+    },
+  });
+
+  try {
+    const response = await requestJson(port, "/api/save", {
+      method: "POST",
+      headers: writeHeaders(port),
+      body: JSON.stringify({
+        key: "notes/readme.txt",
+        content: "hello",
+        contentType: "text/plain\r\nx-injected: yes",
+      }),
+    });
+
+    assert.equal(response.statusCode, 400);
+    assert.equal(response.json.error, "Content-Type must be a valid MIME type.");
+    assert.equal(heads, 0);
+    assert.equal(uploads, 0);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("server allows forced /api/save over an ETag mismatch", async () => {
+  const options = { ...baseOptions(), allowWrite: true };
+  const uploaded: unknown[] = [];
+  const { server, port } = await startTestServer(options, {
+    options,
+    config: { ...baseConfig, bucket: "my-bucket" },
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+      headObject: async (_client, _bucket, key) => metadata(key, "\"remote\""),
+      uploadObject: async (_client, bucket, key, body, contentType) => {
+        uploaded.push([bucket, key, body.toString("utf8"), contentType]);
+      },
+    },
+  });
+
+  try {
+    const response = await requestJson(port, "/api/save", {
+      method: "POST",
+      headers: writeHeaders(port),
+      body: JSON.stringify({
+        key: "notes/readme.txt",
+        content: "hello",
+        etag: "\"opened\"",
+        force: true,
+        contentType: "text/markdown",
+      }),
+    });
+
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(uploaded, [["my-bucket", "notes/readme.txt", "hello", "text/markdown"]]);
+    assert.deepEqual(response.json.metadata, metadata("notes/readme.txt", "\"remote\""));
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("server allows forced create saves over an existing object", async () => {
+  const options = { ...baseOptions(), allowWrite: true };
+  let uploads = 0;
+  const { server, port } = await startTestServer(options, {
+    options,
+    config: { ...baseConfig, bucket: "my-bucket" },
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+      headObject: async (_client, _bucket, key) => metadata(key),
+      uploadObject: async () => {
+        uploads += 1;
+      },
+    },
+  });
+
+  try {
+    const response = await requestJson(port, "/api/save", {
+      method: "POST",
+      headers: writeHeaders(port),
+      body: JSON.stringify({
+        key: "notes/new.txt",
+        content: "hello",
+        create: true,
+        force: true,
+      }),
+    });
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(uploads, 1);
+    assert.deepEqual(response.json.metadata, metadata("notes/new.txt"));
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("server rejects oversized objects from /api/object and /api/raw before downloading", async () => {
+  const options = baseOptions();
+  let downloads = 0;
+  const { server, port } = await startTestServer(options, {
+    options,
+    config: { ...baseConfig, bucket: "my-bucket" },
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+      headObject: async (_client, _bucket, key) => ({
+        ...metadata(key),
+        contentLength: MAX_WEB_OBJECT_BYTES + 1,
+      }),
+      downloadObject: async () => {
+        downloads += 1;
+        return { body: Buffer.from("too late"), metadata: metadata("large.txt") };
+      },
+    },
+  });
+
+  try {
+    const objectResponse = await requestJson(port, "/api/object?key=large.txt");
+    assert.equal(objectResponse.statusCode, 413);
+    assert.match(String(objectResponse.json.error), /Object is too large/);
+
+    const rawResponse = await requestJson(port, "/api/raw?key=large.txt");
+    assert.equal(rawResponse.statusCode, 413);
+    assert.match(String(rawResponse.json.error), /Object is too large/);
+
+    assert.equal(downloads, 0);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("server guards bucket creation by option and bucket name validation", async () => {
+  const disabledOptions = baseOptions();
+  let disabledCreates = 0;
+  const disabled = await startTestServer(disabledOptions, {
+    options: disabledOptions,
+    config: baseConfig,
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+      createBucket: async () => {
+        disabledCreates += 1;
+      },
+    },
+  });
+
+  try {
+    const disabledResponse = await requestJson(disabled.port, "/api/buckets", {
+      method: "POST",
+      headers: writeHeaders(disabled.port),
+      body: JSON.stringify({ bucket: "valid-bucket" }),
+    });
+
+    assert.equal(disabledResponse.statusCode, 403);
+    assert.equal(
+      disabledResponse.json.error,
+      "Bucket creation is disabled. Start with --allow-create-bucket to enable it.",
+    );
+    assert.equal(disabledCreates, 0);
+  } finally {
+    await closeServer(disabled.server);
+  }
+
+  const enabledOptions = { ...baseOptions(), allowCreateBucket: true };
+  const created: unknown[] = [];
+  const enabled = await startTestServer(enabledOptions, {
+    options: enabledOptions,
+    config: { ...baseConfig, endpoint: "http://127.0.0.1:9000" },
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+      createBucket: async (_client, bucket, region, isCustomEndpoint) => {
+        created.push([bucket, region, isCustomEndpoint]);
+      },
+    },
+  });
+
+  try {
+    const invalidResponse = await requestJson(enabled.port, "/api/buckets", {
+      method: "POST",
+      headers: writeHeaders(enabled.port),
+      body: JSON.stringify({ bucket: "Bad_Bucket" }),
+    });
+
+    assert.equal(invalidResponse.statusCode, 400);
+    assert.match(String(invalidResponse.json.error), /Bucket name must be/);
+    assert.deepEqual(created, []);
+
+    const validResponse = await requestJson(enabled.port, "/api/buckets", {
+      method: "POST",
+      headers: writeHeaders(enabled.port),
+      body: JSON.stringify({ bucket: "  valid-bucket  " }),
+    });
+
+    assert.equal(validResponse.statusCode, 200);
+    assert.equal(validResponse.json.bucket, "valid-bucket");
+    assert.deepEqual(created, [["valid-bucket", "ap-northeast-1", true]]);
+  } finally {
+    await closeServer(enabled.server);
+  }
+});
+
+test("server handles missing objects correctly on /api/save", async () => {
+  const options = { ...baseOptions(), allowWrite: true };
+  const uploaded: unknown[] = [];
+  let headCalls = 0;
+  const { server, port } = await startTestServer(options, {
+    options,
+    config: { ...baseConfig, bucket: "my-bucket" },
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+      headObject: async (_client, _bucket, key) => {
+        headCalls += 1;
+        if (headCalls === 1) throw missingObjectError();
+        if (headCalls === 2) throw missingObjectError();
+        return metadata(key, "\"created\"");
+      },
+      uploadObject: async (_client, bucket, key, body, contentType) => {
+        uploaded.push([bucket, key, body.toString("utf8"), contentType]);
+      },
+    },
+  });
+
+  try {
+    const missingUpdate = await requestJson(port, "/api/save", {
+      method: "POST",
+      headers: writeHeaders(port),
+      body: JSON.stringify({ key: "notes/missing.txt", content: "hello" }),
+    });
+
+    assert.equal(missingUpdate.statusCode, 404);
+    assert.equal(missingUpdate.json.error, "Object does not exist.");
+    assert.deepEqual(uploaded, []);
+
+    const createResponse = await requestJson(port, "/api/save", {
+      method: "POST",
+      headers: writeHeaders(port),
+      body: JSON.stringify({ key: "notes/missing.txt", content: "hello", create: true }),
+    });
+
+    assert.equal(createResponse.statusCode, 200);
+    assert.deepEqual(uploaded, [["my-bucket", "notes/missing.txt", "hello", undefined]]);
+    assert.deepEqual(createResponse.json.metadata, metadata("notes/missing.txt", "\"created\""));
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("server sanitizes attachment filenames on /api/download", async () => {
+  const options = baseOptions();
+  const { server, port } = await startTestServer(options, {
+    options,
+    config: { ...baseConfig, bucket: "my-bucket" },
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+      getObjectForDownload: async () => ({
+        Body: Readable.from(["hello"]),
+        ContentLength: 5,
+        ContentType: "text/plain",
+      }) as never,
+    },
+  });
+
+  try {
+    const key = "folder/bad\"\\\r\nname.txt";
+    const response = await requestRaw(port, `/api/download?key=${encodeURIComponent(key)}`);
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.body, "hello");
+    assert.equal(response.headers["content-disposition"], "attachment; filename=\"bad____name.txt\"; filename*=UTF-8''bad____name.txt");
+    assert.equal(response.headers["x-content-type-options"], "nosniff");
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("server rejects static file path traversal", async () => {
+  const options = baseOptions();
+  const { server, port } = await startTestServer(options, {
+    options,
+    config: baseConfig,
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+    },
+  });
+
+  try {
+    const response = await requestRaw(port, "/..%2Fpackage.json");
+
+    assert.equal(response.statusCode, 404);
+    assert.equal(response.body, "Not found");
   } finally {
     await closeServer(server);
   }

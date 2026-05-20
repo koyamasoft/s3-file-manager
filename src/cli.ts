@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { getConfig, refreshAwsCredentialEnv, type GlobalOptions } from "./config.js";
 import { createCredentialRefreshError, credentialErrorMessage, isCredentialError } from "./credentials.js";
 import {
@@ -31,6 +32,30 @@ type ParsedArgs = {
   options: GlobalOptions;
 };
 
+type CliDependencies = {
+  getConfig: typeof getConfig;
+  createS3Client: typeof createS3Client;
+  refreshAwsCredentialEnv: typeof refreshAwsCredentialEnv;
+  downloadObject: typeof downloadObject;
+  headObject: typeof headObject;
+  listObjects: typeof listObjects;
+  uploadObject: typeof uploadObject;
+  log: (message: string) => void;
+  warn: (message: string) => void;
+};
+
+const defaultDependencies: CliDependencies = {
+  getConfig,
+  createS3Client,
+  refreshAwsCredentialEnv,
+  downloadObject,
+  headObject,
+  listObjects,
+  uploadObject,
+  log: (message) => console.log(message),
+  warn: (message) => console.warn(message),
+};
+
 function usage(): string {
   return `
 S3 File Manager
@@ -54,7 +79,7 @@ Global options:
 `.trim();
 }
 
-function parseArgs(argv: string[]): ParsedArgs {
+export function parseArgs(argv: string[]): ParsedArgs {
   const args: string[] = [];
   const options: GlobalOptions = { yes: false };
 
@@ -116,12 +141,12 @@ function formatBytes(bytes?: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
 }
 
-function printMetadata(metadata: ObjectMetadata): void {
-  console.log(`Key: ${metadata.key}`);
-  console.log(`Content-Type: ${metadata.contentType ?? "-"}`);
-  console.log(`Size: ${formatBytes(metadata.contentLength)}`);
-  console.log(`ETag: ${metadata.etag ?? "-"}`);
-  console.log(`LastModified: ${metadata.lastModified ?? "-"}`);
+function printMetadata(metadata: ObjectMetadata, log: (message: string) => void = console.log): void {
+  log(`Key: ${metadata.key}`);
+  log(`Content-Type: ${metadata.contentType ?? "-"}`);
+  log(`Size: ${formatBytes(metadata.contentLength)}`);
+  log(`ETag: ${metadata.etag ?? "-"}`);
+  log(`LastModified: ${metadata.lastModified ?? "-"}`);
 }
 
 function saveMetadata(workDir: string, metadata: ObjectMetadata): void {
@@ -138,11 +163,12 @@ function readSavedMetadata(workDir: string, key: string): ObjectMetadata | null 
 async function ensureDownloaded(
   withFreshS3: <T>(operation: () => Promise<T>) => Promise<T>,
   getClient: () => ReturnType<typeof createS3Client>,
+  download: typeof downloadObject,
   bucket: string,
   workDir: string,
   key: string,
 ): Promise<{ path: string; metadata: ObjectMetadata }> {
-  const { body, metadata } = await withFreshS3(() => downloadObject(getClient(), bucket, key));
+  const { body, metadata } = await withFreshS3(() => download(getClient(), bucket, key));
   const path = localPathFor(workDir, key);
   writeFileEnsured(path, body);
   saveMetadata(workDir, metadata);
@@ -152,6 +178,10 @@ async function ensureDownloaded(
 async function uploadWithChecks(
   withFreshS3: <T>(operation: () => Promise<T>) => Promise<T>,
   getClient: () => ReturnType<typeof createS3Client>,
+  head: typeof headObject,
+  upload: typeof uploadObject,
+  log: (message: string) => void,
+  warn: (message: string) => void,
   bucket: string,
   workDir: string,
   key: string,
@@ -160,42 +190,46 @@ async function uploadWithChecks(
 ): Promise<void> {
   const saved = readSavedMetadata(workDir, key);
   if (saved?.etag) {
-    const current = await withFreshS3(() => headObject(getClient(), bucket, key)).catch(() => null);
+    const current = await withFreshS3(() => head(getClient(), bucket, key)).catch(() => null);
     if (current?.etag && current.etag !== saved.etag) {
-      console.warn(`Warning: remote ETag changed since download.`);
-      console.warn(`Downloaded: ${saved.etag}`);
-      console.warn(`Current:    ${current.etag}`);
+      warn(`Warning: remote ETag changed since download.`);
+      warn(`Downloaded: ${saved.etag}`);
+      warn(`Current:    ${current.etag}`);
     }
   }
 
-  console.log(`Upload target: s3://${bucket}/${key}`);
-  console.log(`Local file: ${localPath}`);
-  console.log(`Size: ${formatBytes(fileSize(localPath))}`);
+  log(`Upload target: s3://${bucket}/${key}`);
+  log(`Local file: ${localPath}`);
+  log(`Size: ${formatBytes(fileSize(localPath))}`);
 
   if (!yes && !(await confirm("Upload this file?"))) {
-    console.log("Canceled.");
+    log("Canceled.");
     return;
   }
 
-  await withFreshS3(() => uploadObject(getClient(), bucket, key, readLocalFile(localPath)));
-  const metadata = await withFreshS3(() => headObject(getClient(), bucket, key));
+  await withFreshS3(() => upload(getClient(), bucket, key, readLocalFile(localPath)));
+  const metadata = await withFreshS3(() => head(getClient(), bucket, key));
   saveMetadata(workDir, metadata);
-  console.log("Uploaded.");
+  log("Uploaded.");
 }
 
-async function main(): Promise<void> {
-  const parsed = parseArgs(process.argv.slice(2));
+export async function runCli(
+  argv: string[],
+  dependencies: Partial<CliDependencies> = {},
+): Promise<void> {
+  const deps: CliDependencies = { ...defaultDependencies, ...dependencies };
+  const parsed = parseArgs(argv);
   if (!parsed.command || parsed.command === "help") {
-    console.log(usage());
+    deps.log(usage());
     return;
   }
 
-  const config = getConfig(parsed.options);
+  const config = deps.getConfig(parsed.options);
   if (!config.bucket) {
     throw new Error("S3_BUCKET is required. Set it in .env or pass --bucket.");
   }
   const bucket = config.bucket;
-  let client = createS3Client(config);
+  let client = deps.createS3Client(config);
   let credentialRefreshes = 0;
   async function withFreshS3<T>(operation: () => Promise<T>): Promise<T> {
     try {
@@ -205,14 +239,14 @@ async function main(): Promise<void> {
 
       credentialRefreshes += 1;
       client.destroy();
-      refreshAwsCredentialEnv(parsed.options.envFile);
-      client = createS3Client(config);
-      console.warn(`AWS credentials were refreshed. Retry count: ${credentialRefreshes}`);
+      deps.refreshAwsCredentialEnv(parsed.options.envFile);
+      client = deps.createS3Client(config);
+      deps.warn(`AWS credentials were refreshed. Retry count: ${credentialRefreshes}`);
       try {
         return await operation();
       } catch (retryError) {
         if (!isCredentialError(retryError)) throw retryError;
-        console.warn(`AWS credential refresh retry failed: ${credentialErrorMessage(retryError)}`);
+        deps.warn(`AWS credential refresh retry failed: ${credentialErrorMessage(retryError)}`);
         throw createCredentialRefreshError(retryError, credentialRefreshes);
       }
     }
@@ -223,16 +257,16 @@ async function main(): Promise<void> {
   switch (parsed.command) {
     case "list": {
       const prefix = commandArgs[0] ?? "";
-      const { objects, isTruncated } = await withFreshS3(() => listObjects(client, bucket, prefix));
+      const { objects, isTruncated } = await withFreshS3(() => deps.listObjects(client, bucket, prefix));
       if (objects.length === 0) {
-        console.log("(no objects)");
+        deps.log("(no objects)");
         return;
       }
       for (const object of objects) {
-        console.log(`${object.Key}\t${formatBytes(object.Size)}\t${object.LastModified?.toISOString() ?? "-"}`);
+        deps.log(`${object.Key}\t${formatBytes(object.Size)}\t${object.LastModified?.toISOString() ?? "-"}`);
       }
       if (isTruncated) {
-        console.warn(`List truncated at ${DEFAULT_LIST_OBJECT_LIMIT} objects. Narrow the prefix to see more.`);
+        deps.warn(`List truncated at ${DEFAULT_LIST_OBJECT_LIMIT} objects. Narrow the prefix to see more.`);
       }
       return;
     }
@@ -240,7 +274,7 @@ async function main(): Promise<void> {
     case "head": {
       const key = commandArgs[0];
       if (!key) throw new Error("head requires <key>.");
-      printMetadata(await withFreshS3(() => headObject(client, bucket, key)));
+      printMetadata(await withFreshS3(() => deps.headObject(client, bucket, key)), deps.log);
       return;
     }
 
@@ -248,26 +282,26 @@ async function main(): Promise<void> {
       const out = optionValue(commandArgs, "--out");
       const key = commandArgs[0];
       if (!key) throw new Error("get requires <key>.");
-      const { body, metadata } = await withFreshS3(() => downloadObject(client, bucket, key));
+      const { body, metadata } = await withFreshS3(() => deps.downloadObject(client, bucket, key));
       const path = out ?? localPathFor(config.workDir, key);
       writeFileEnsured(path, body);
       saveMetadata(config.workDir, metadata);
-      console.log(`Downloaded: ${path}`);
-      printMetadata(metadata);
+      deps.log(`Downloaded: ${path}`);
+      printMetadata(metadata, deps.log);
       return;
     }
 
     case "show": {
       const key = commandArgs[0];
       if (!key) throw new Error("show requires <key>.");
-      const { body, metadata } = await withFreshS3(() => downloadObject(client, bucket, key));
+      const { body, metadata } = await withFreshS3(() => deps.downloadObject(client, bucket, key));
       saveMetadata(config.workDir, metadata);
       if (!isTextKey(key, metadata.contentType)) {
-        printMetadata(metadata);
-        console.log("Binary-like object; content display skipped.");
+        printMetadata(metadata, deps.log);
+        deps.log("Binary-like object; content display skipped.");
         return;
       }
-      console.log(Buffer.from(body).toString("utf8"));
+      deps.log(Buffer.from(body).toString("utf8"));
       return;
     }
 
@@ -279,7 +313,7 @@ async function main(): Promise<void> {
         throw new Error(`Local file does not exist. Run get first: ${localPath}`);
       }
       const remotePath = join(config.workDir, "remote", basename(key));
-      const { body } = await withFreshS3(() => downloadObject(client, bucket, key));
+      const { body } = await withFreshS3(() => deps.downloadObject(client, bucket, key));
       writeFileEnsured(remotePath, body);
       runDiff(remotePath, localPath);
       return;
@@ -291,16 +325,35 @@ async function main(): Promise<void> {
       if (!key) throw new Error("put requires <key>.");
       const localPath = file ?? localPathFor(config.workDir, key);
       if (!existsSync(localPath)) throw new Error(`Local file does not exist: ${localPath}`);
-      await uploadWithChecks(withFreshS3, getClient, bucket, config.workDir, key, localPath, parsed.options.yes);
+      await uploadWithChecks(
+        withFreshS3,
+        getClient,
+        deps.headObject,
+        deps.uploadObject,
+        deps.log,
+        deps.warn,
+        bucket,
+        config.workDir,
+        key,
+        localPath,
+        parsed.options.yes,
+      );
       return;
     }
 
     case "edit": {
       const key = commandArgs[0];
       if (!key) throw new Error("edit requires <key>.");
-      const { path, metadata } = await ensureDownloaded(withFreshS3, getClient, bucket, config.workDir, key);
+      const { path, metadata } = await ensureDownloaded(
+        withFreshS3,
+        getClient,
+        deps.downloadObject,
+        bucket,
+        config.workDir,
+        key,
+      );
       if (!isTextKey(key, metadata.contentType)) {
-        printMetadata(metadata);
+        printMetadata(metadata, deps.log);
         throw new Error("Refusing to edit binary-like object.");
       }
 
@@ -312,7 +365,19 @@ async function main(): Promise<void> {
         console.log("No changes.");
         return;
       }
-      await uploadWithChecks(withFreshS3, getClient, bucket, config.workDir, key, path, parsed.options.yes);
+      await uploadWithChecks(
+        withFreshS3,
+        getClient,
+        deps.headObject,
+        deps.uploadObject,
+        deps.log,
+        deps.warn,
+        bucket,
+        config.workDir,
+        key,
+        path,
+        parsed.options.yes,
+      );
       return;
     }
 
@@ -321,7 +386,13 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
+async function main(): Promise<void> {
+  await runCli(process.argv.slice(2));
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
+}

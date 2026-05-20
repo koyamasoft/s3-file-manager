@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createServer, request as httpRequest, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
-import { createRequestHandler, type ServerOptions } from "./server.js";
+import { createRequestHandler, parseArgs as parseServerArgs, type ServerOptions } from "./server.js";
 import type { ToolConfig } from "./config.js";
 import type { ObjectMetadata } from "./s3.js";
 import { MAX_WEB_OBJECT_BYTES } from "./validation.js";
@@ -167,6 +167,32 @@ test("server rejects untrusted Host headers before serving API responses", async
   }
 });
 
+test("server parses Web UI startup options", () => {
+  assert.deepEqual(parseServerArgs([
+    "--allow-write",
+    "--allow-create-bucket",
+    "--port",
+    "7777",
+    "--bucket",
+    "my-bucket",
+  ]), {
+    yes: false,
+    port: 7777,
+    allowWrite: true,
+    allowCreateBucket: true,
+    bucket: "my-bucket",
+  });
+
+  assert.throws(
+    () => parseServerArgs(["--port", "not-a-number"]),
+    /--port requires a positive integer/,
+  );
+  assert.throws(
+    () => parseServerArgs(["--unknown"]),
+    /Unknown option: --unknown/,
+  );
+});
+
 test("server requires CSRF token for write-mode changes", async () => {
   const options = baseOptions();
   const { server, port } = await startTestServer(options, {
@@ -250,6 +276,56 @@ test("server checks local Origin for write requests", async () => {
     });
     assert.equal(localOrigin.statusCode, 200);
     assert.equal(localOrigin.json.allowWrite, true);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("server checks Sec-Fetch-Site for write requests", async () => {
+  const options = baseOptions();
+  const { server, port } = await startTestServer(options, {
+    options,
+    config: baseConfig,
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+    },
+  });
+
+  try {
+    const body = JSON.stringify({ allowWrite: true });
+    const crossSite = await requestJson(port, "/api/write-mode", {
+      method: "POST",
+      headers: {
+        ...writeHeaders(port),
+        "Sec-Fetch-Site": "cross-site",
+      },
+      body,
+    });
+    assert.equal(crossSite.statusCode, 403);
+    assert.equal(crossSite.json.error, "Forbidden.");
+
+    const sameOrigin = await requestJson(port, "/api/write-mode", {
+      method: "POST",
+      headers: {
+        ...writeHeaders(port),
+        "Sec-Fetch-Site": "same-origin",
+      },
+      body,
+    });
+    assert.equal(sameOrigin.statusCode, 200);
+    assert.equal(sameOrigin.json.allowWrite, true);
+
+    const none = await requestJson(port, "/api/write-mode", {
+      method: "POST",
+      headers: {
+        ...writeHeaders(port),
+        "Sec-Fetch-Site": "none",
+      },
+      body: JSON.stringify({ allowWrite: false }),
+    });
+    assert.equal(none.statusCode, 200);
+    assert.equal(none.json.allowWrite, false);
   } finally {
     await closeServer(server);
   }
@@ -389,6 +465,31 @@ test("server rejects invalid Content-Type on /api/save before uploading", async 
   }
 });
 
+test("server rejects request bodies over the write request limit", async () => {
+  const options = baseOptions();
+  const { server, port } = await startTestServer(options, {
+    options,
+    config: baseConfig,
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+    },
+  });
+
+  try {
+    await assert.rejects(
+      () => requestRaw(port, "/api/write-mode", {
+        method: "POST",
+        headers: writeHeaders(port),
+        body: "x".repeat(10 * 1024 * 1024 + 1),
+      }),
+      /socket hang up|ECONNRESET|Request body is too large/,
+    );
+  } finally {
+    await closeServer(server);
+  }
+});
+
 test("server allows forced /api/save over an ETag mismatch", async () => {
   const options = { ...baseOptions(), allowWrite: true };
   const uploaded: unknown[] = [];
@@ -492,6 +593,78 @@ test("server rejects oversized objects from /api/object and /api/raw before down
     assert.match(String(rawResponse.json.error), /Object is too large/);
 
     assert.equal(downloads, 0);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("server returns text content from /api/object only for editable object types", async () => {
+  const options = baseOptions();
+  const downloads: string[] = [];
+  const { server, port } = await startTestServer(options, {
+    options,
+    config: { ...baseConfig, bucket: "my-bucket" },
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+      headObject: async (_client, _bucket, key) => metadata(key),
+      downloadObject: async (_client, _bucket, key) => {
+        downloads.push(key);
+        const contentType = key.endsWith(".png") ? "image/png" : "application/json";
+        return {
+          body: Buffer.from(key.endsWith(".png") ? "png-bytes" : "{\"ok\":true}"),
+          metadata: { ...metadata(key), contentType },
+        };
+      },
+    },
+  });
+
+  try {
+    const textResponse = await requestJson(port, "/api/object?key=data.json");
+    assert.equal(textResponse.statusCode, 200);
+    assert.equal(textResponse.json.text, true);
+    assert.equal(textResponse.json.content, "{\"ok\":true}");
+
+    const binaryResponse = await requestJson(port, "/api/object?key=image.png");
+    assert.equal(binaryResponse.statusCode, 200);
+    assert.equal(binaryResponse.json.text, false);
+    assert.equal(binaryResponse.json.content, null);
+
+    assert.deepEqual(downloads, ["data.json", "image.png"]);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("server chooses inline or attachment disposition for /api/raw by content type", async () => {
+  const options = baseOptions();
+  const { server, port } = await startTestServer(options, {
+    options,
+    config: { ...baseConfig, bucket: "my-bucket" },
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+      headObject: async (_client, _bucket, key) => metadata(key),
+      downloadObject: async (_client, _bucket, key) => ({
+        body: Buffer.from(key.endsWith(".png") ? "png-bytes" : "text"),
+        metadata: {
+          ...metadata(key),
+          contentType: key.endsWith(".png") ? "image/png" : "text/plain",
+        },
+      }),
+    },
+  });
+
+  try {
+    const inline = await requestRaw(port, "/api/raw?key=image.png");
+    assert.equal(inline.statusCode, 200);
+    assert.equal(inline.headers["content-type"], "image/png");
+    assert.equal(inline.headers["content-disposition"], "inline");
+
+    const attachment = await requestRaw(port, "/api/raw?key=note.txt");
+    assert.equal(attachment.statusCode, 200);
+    assert.equal(attachment.headers["content-type"], "application/octet-stream");
+    assert.equal(attachment.headers["content-disposition"], "attachment; filename=\"note.txt\"");
   } finally {
     await closeServer(server);
   }

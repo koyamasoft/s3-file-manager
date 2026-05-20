@@ -74,7 +74,7 @@ const defaultDependencies: ServerDependencies = {
   warn: (message) => console.warn(message),
 };
 
-function parseArgs(argv: string[]): ServerOptions {
+export function parseArgs(argv: string[]): ServerOptions {
   const options: ServerOptions = { yes: false, port: 5174, allowWrite: false, allowCreateBucket: false };
 
   for (let i = 0; i < argv.length; i += 1) {

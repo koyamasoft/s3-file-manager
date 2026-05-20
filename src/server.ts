@@ -4,8 +4,8 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { existsSync, readFileSync } from "node:fs";
 import { basename, extname, isAbsolute, relative, resolve } from "node:path";
 import { Readable } from "node:stream";
-import { fileURLToPath } from "node:url";
-import { getConfig, refreshAwsCredentialEnv, type GlobalOptions } from "./config.js";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { getConfig, refreshAwsCredentialEnv, type GlobalOptions, type ToolConfig } from "./config.js";
 import { createCredentialRefreshError, credentialErrorMessage, isCredentialError } from "./credentials.js";
 import { isTextKey } from "./file.js";
 import {
@@ -26,10 +26,23 @@ import {
   webObjectLimitLabel,
 } from "./validation.js";
 
-type ServerOptions = GlobalOptions & {
+export type ServerOptions = GlobalOptions & {
   port: number;
   allowWrite: boolean;
   allowCreateBucket: boolean;
+};
+
+type ServerDependencies = {
+  createS3Client: typeof createS3Client;
+  refreshAwsCredentialEnv: typeof refreshAwsCredentialEnv;
+  createBucket: typeof createBucket;
+  downloadObject: typeof downloadObject;
+  getObjectForDownload: typeof getObjectForDownload;
+  headObject: typeof headObject;
+  listBuckets: typeof listBuckets;
+  listObjects: typeof listObjects;
+  uploadObject: typeof uploadObject;
+  warn: (message: string) => void;
 };
 
 type JsonValue =
@@ -46,6 +59,19 @@ const MIME_TYPES: Record<string, string> = {
   ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml",
+};
+
+const defaultDependencies: ServerDependencies = {
+  createS3Client,
+  refreshAwsCredentialEnv,
+  createBucket,
+  downloadObject,
+  getObjectForDownload,
+  headObject,
+  listBuckets,
+  listObjects,
+  uploadObject,
+  warn: (message) => console.warn(message),
 };
 
 function parseArgs(argv: string[]): ServerOptions {
@@ -252,11 +278,19 @@ function streamObjectBody(body: NonNullable<Awaited<ReturnType<typeof getObjectF
   Readable.fromWeb(webStream as Parameters<typeof Readable.fromWeb>[0]).pipe(response);
 }
 
-async function main(): Promise<void> {
-  const options = parseArgs(process.argv.slice(2));
-  const config = getConfig(options, false);
-  let client = createS3Client(config);
-  const csrfToken = randomBytes(32).toString("hex");
+export function createRequestHandler({
+  options,
+  config,
+  csrfToken = randomBytes(32).toString("hex"),
+  dependencies = {},
+}: {
+  options: ServerOptions;
+  config: ToolConfig;
+  csrfToken?: string;
+  dependencies?: Partial<ServerDependencies>;
+}): (request: IncomingMessage, response: ServerResponse) => Promise<void> {
+  const deps: ServerDependencies = { ...defaultDependencies, ...dependencies };
+  let client = deps.createS3Client(config);
   let credentialRefreshes = 0;
 
   async function withFreshS3<T>(operation: () => Promise<T>): Promise<T> {
@@ -267,20 +301,20 @@ async function main(): Promise<void> {
 
       credentialRefreshes += 1;
       client.destroy();
-      refreshAwsCredentialEnv(options.envFile);
-      client = createS3Client(config);
-      console.warn(`AWS credentials were refreshed. Retry count: ${credentialRefreshes}`);
+      deps.refreshAwsCredentialEnv(options.envFile);
+      client = deps.createS3Client(config);
+      deps.warn(`AWS credentials were refreshed. Retry count: ${credentialRefreshes}`);
       try {
         return await operation();
       } catch (retryError) {
         if (!isCredentialError(retryError)) throw retryError;
-        console.warn(`AWS credential refresh retry failed: ${credentialErrorMessage(retryError)}`);
+        deps.warn(`AWS credential refresh retry failed: ${credentialErrorMessage(retryError)}`);
         throw createCredentialRefreshError(retryError, credentialRefreshes);
       }
     }
   }
 
-  const server = createServer(async (request, response) => {
+  return async (request, response) => {
     try {
       if (!isAllowedHost(request.headers.host, options.port)) {
         sendJson(response, 403, { error: "Forbidden host." });
@@ -331,12 +365,12 @@ async function main(): Promise<void> {
           const bucket = parsed.bucket?.trim();
           if (!bucket) throw new Error("bucket is required.");
           assertValidBucketName(bucket);
-          await withFreshS3(() => createBucket(client, bucket, config.region, !!config.endpoint));
+          await withFreshS3(() => deps.createBucket(client, bucket, config.region, !!config.endpoint));
           sendJson(response, 200, { bucket });
           return;
         }
 
-        const buckets = await withFreshS3(() => listBuckets(client));
+        const buckets = await withFreshS3(() => deps.listBuckets(client));
         sendJson(response, 200, {
           buckets: buckets.map((bucket) => ({
             name: bucket.Name ?? "",
@@ -370,7 +404,7 @@ async function main(): Promise<void> {
         const bucket = bucketFromRequest(requestUrl, config.bucket ?? "");
         if (!bucket) throw new Error("bucket is required.");
         const { objects, isTruncated, nextContinuationToken } = await withFreshS3(() =>
-          listObjects(client, bucket, prefix, DEFAULT_LIST_OBJECT_LIMIT, continuationToken)
+          deps.listObjects(client, bucket, prefix, DEFAULT_LIST_OBJECT_LIMIT, continuationToken)
         );
         sendJson(response, 200, {
           isTruncated,
@@ -392,9 +426,9 @@ async function main(): Promise<void> {
         const bucket = bucketFromRequest(requestUrl, config.bucket ?? "");
         if (!bucket) throw new Error("bucket is required.");
 
-        const metadataBeforeDownload = await withFreshS3(() => headObject(client, bucket, key));
+        const metadataBeforeDownload = await withFreshS3(() => deps.headObject(client, bucket, key));
         assertWebObjectSize(metadataBeforeDownload.contentLength, key);
-        const { body, metadata } = await withFreshS3(() => downloadObject(client, bucket, key));
+        const { body, metadata } = await withFreshS3(() => deps.downloadObject(client, bucket, key));
         assertWebObjectSize(body.byteLength, key);
         const text = isTextKey(key, metadata.contentType);
         sendJson(response, 200, {
@@ -411,9 +445,9 @@ async function main(): Promise<void> {
         const bucket = bucketFromRequest(requestUrl, config.bucket ?? "");
         if (!bucket) throw new Error("bucket is required.");
 
-        const metadataBeforeDownload = await withFreshS3(() => headObject(client, bucket, key));
+        const metadataBeforeDownload = await withFreshS3(() => deps.headObject(client, bucket, key));
         assertWebObjectSize(metadataBeforeDownload.contentLength, key);
-        const { body, metadata } = await withFreshS3(() => downloadObject(client, bucket, key));
+        const { body, metadata } = await withFreshS3(() => deps.downloadObject(client, bucket, key));
         assertWebObjectSize(body.byteLength, key);
         const contentType = metadata.contentType ?? "application/octet-stream";
         const inlinePreview = isInlinePreviewContentType(contentType);
@@ -433,7 +467,7 @@ async function main(): Promise<void> {
         const bucket = bucketFromRequest(requestUrl, config.bucket ?? "");
         if (!bucket) throw new Error("bucket is required.");
 
-        const result = await withFreshS3(() => getObjectForDownload(client, bucket, key));
+        const result = await withFreshS3(() => deps.getObjectForDownload(client, bucket, key));
         if (!result.Body) throw new Error(`Object has no body: ${key}`);
         response.writeHead(200, {
           "Content-Type": result.ContentType ?? "application/octet-stream",
@@ -475,7 +509,7 @@ async function main(): Promise<void> {
         const content = parsed.content;
         const bucket = parsed.bucket || config.bucket;
         if (!bucket) throw new Error("bucket is required.");
-        const current = await withFreshS3(() => headObject(client, bucket, key)).catch((error: unknown) => {
+        const current = await withFreshS3(() => deps.headObject(client, bucket, key)).catch((error: unknown) => {
           const namedError = error as { name?: string; $metadata?: { httpStatusCode?: number } };
           if (
             namedError.name === "NotFound" ||
@@ -509,7 +543,7 @@ async function main(): Promise<void> {
         }
 
         await withFreshS3(() =>
-          uploadObject(
+          deps.uploadObject(
             client,
             bucket,
             key,
@@ -517,7 +551,7 @@ async function main(): Promise<void> {
             parsed.contentType ?? current?.contentType,
           ),
         );
-        const metadata = await withFreshS3(() => headObject(client, bucket, key));
+        const metadata = await withFreshS3(() => deps.headObject(client, bucket, key));
         sendJson(response, 200, { metadata });
         return;
       }
@@ -531,7 +565,13 @@ async function main(): Promise<void> {
     } catch (error) {
       sendError(response, 500, error);
     }
-  });
+  };
+}
+
+async function main(): Promise<void> {
+  const options = parseArgs(process.argv.slice(2));
+  const config = getConfig(options, false);
+  const server = createServer(createRequestHandler({ options, config }));
 
   server.listen(options.port, "127.0.0.1", () => {
     console.log(`S3 File Manager Web UI: http://127.0.0.1:${options.port}`);
@@ -540,7 +580,9 @@ async function main(): Promise<void> {
   });
 }
 
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
+}

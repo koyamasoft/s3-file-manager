@@ -11,6 +11,13 @@ type TestResponse = {
   json: Record<string, unknown>;
 };
 
+type TestRequestOptions = {
+  method?: string;
+  host?: string;
+  headers?: Record<string, string>;
+  body?: string;
+};
+
 const baseConfig: ToolConfig = {
   region: "ap-northeast-1",
   bucket: undefined,
@@ -55,15 +62,22 @@ async function closeServer(server: Server): Promise<void> {
   });
 }
 
-async function requestJson(port: number, path: string, host?: string): Promise<TestResponse> {
+async function requestJson(
+  port: number,
+  path: string,
+  options: TestRequestOptions = {},
+): Promise<TestResponse> {
+  const body = options.body ?? "";
   return await new Promise<TestResponse>((resolveRequest, reject) => {
     const request = httpRequest({
       hostname: "127.0.0.1",
       port,
       path,
-      method: "GET",
+      method: options.method ?? "GET",
       headers: {
-        Host: host ?? `127.0.0.1:${port}`,
+        Host: options.host ?? `127.0.0.1:${port}`,
+        ...(body && { "Content-Length": String(Buffer.byteLength(body)) }),
+        ...options.headers,
       },
     }, (response) => {
       const chunks: Buffer[] = [];
@@ -78,6 +92,7 @@ async function requestJson(port: number, path: string, host?: string): Promise<T
       });
     });
     request.on("error", reject);
+    if (body) request.write(body);
     request.end();
   });
 }
@@ -97,13 +112,101 @@ test("server rejects untrusted Host headers before serving API responses", async
     const allowed = await requestJson(port, "/api/config");
     assert.equal(allowed.statusCode, 200);
 
-    const evilHost = await requestJson(port, "/api/config", `evil.example:${port}`);
+    const evilHost = await requestJson(port, "/api/config", { host: `evil.example:${port}` });
     assert.equal(evilHost.statusCode, 403);
     assert.equal(evilHost.json.error, "Forbidden host.");
 
-    const confusingHost = await requestJson(port, "/api/config", `evil@localhost:${port}`);
+    const confusingHost = await requestJson(port, "/api/config", { host: `evil@localhost:${port}` });
     assert.equal(confusingHost.statusCode, 403);
     assert.equal(confusingHost.json.error, "Forbidden host.");
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("server requires CSRF token for write-mode changes", async () => {
+  const options = baseOptions();
+  const { server, port } = await startTestServer(options, {
+    options,
+    config: baseConfig,
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+    },
+  });
+
+  try {
+    const body = JSON.stringify({ allowWrite: true });
+    const missingToken = await requestJson(port, "/api/write-mode", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    });
+    assert.equal(missingToken.statusCode, 403);
+    assert.equal(missingToken.json.error, "Forbidden.");
+
+    const wrongToken = await requestJson(port, "/api/write-mode", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-S3FM-CSRF": "wrong-token",
+      },
+      body,
+    });
+    assert.equal(wrongToken.statusCode, 403);
+    assert.equal(wrongToken.json.error, "Forbidden.");
+
+    const validToken = await requestJson(port, "/api/write-mode", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-S3FM-CSRF": "test-token",
+      },
+      body,
+    });
+    assert.equal(validToken.statusCode, 200);
+    assert.equal(validToken.json.allowWrite, true);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("server checks local Origin for write requests", async () => {
+  const options = baseOptions();
+  const { server, port } = await startTestServer(options, {
+    options,
+    config: baseConfig,
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+    },
+  });
+
+  try {
+    const body = JSON.stringify({ allowWrite: true });
+    const evilOrigin = await requestJson(port, "/api/write-mode", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-S3FM-CSRF": "test-token",
+        Origin: "http://evil.example",
+      },
+      body,
+    });
+    assert.equal(evilOrigin.statusCode, 403);
+    assert.equal(evilOrigin.json.error, "Forbidden.");
+
+    const localOrigin = await requestJson(port, "/api/write-mode", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-S3FM-CSRF": "test-token",
+        Origin: `http://127.0.0.1:${port}`,
+      },
+      body,
+    });
+    assert.equal(localOrigin.statusCode, 200);
+    assert.equal(localOrigin.json.allowWrite, true);
   } finally {
     await closeServer(server);
   }

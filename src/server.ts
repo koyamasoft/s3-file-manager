@@ -147,6 +147,10 @@ function sendError(response: ServerResponse, status: number, error: unknown): vo
 }
 
 function readRequestBody(request: IncomingMessage): Promise<string> {
+  return readRequestBuffer(request).then((body) => body.toString("utf8"));
+}
+
+function readRequestBuffer(request: IncomingMessage): Promise<Buffer> {
   return new Promise((resolveBody, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
@@ -157,7 +161,7 @@ function readRequestBody(request: IncomingMessage): Promise<string> {
         request.destroy(new Error("Request body is too large."));
       }
     });
-    request.on("end", () => resolveBody(Buffer.concat(chunks).toString("utf8")));
+    request.on("end", () => resolveBody(Buffer.concat(chunks)));
     request.on("error", reject);
   });
 }
@@ -266,6 +270,22 @@ function assertWebObjectSize(contentLength: number | undefined, key: string): vo
       { statusCode: 413 },
     );
   }
+}
+
+async function existingObjectOrNull(
+  operation: () => Promise<Awaited<ReturnType<typeof headObject>>>,
+): Promise<Awaited<ReturnType<typeof headObject>> | null> {
+  return await operation().catch((error: unknown) => {
+    const namedError = error as { name?: string; $metadata?: { httpStatusCode?: number } };
+    if (
+      namedError.name === "NotFound" ||
+      namedError.name === "NoSuchKey" ||
+      namedError.$metadata?.httpStatusCode === 404
+    ) {
+      return null;
+    }
+    throw error;
+  });
 }
 
 function streamObjectBody(body: NonNullable<Awaited<ReturnType<typeof getObjectForDownload>>["Body"]>, response: ServerResponse): void {
@@ -480,6 +500,41 @@ export function createRequestHandler({
         return;
       }
 
+      if (requestUrl.pathname === "/api/upload") {
+        if (request.method !== "POST") {
+          response.writeHead(405, { Allow: "POST" });
+          response.end();
+          return;
+        }
+        if (!options.allowWrite) {
+          sendJson(response, 403, { error: "Writing is disabled. Start with --allow-write to enable uploads." });
+          return;
+        }
+
+        const key = requestUrl.searchParams.get("key")?.trim().replace(/^\/+/, "");
+        if (!key) throw new Error("key is required.");
+        const bucket = bucketFromRequest(requestUrl, config.bucket ?? "");
+        if (!bucket) throw new Error("bucket is required.");
+        const force = requestUrl.searchParams.get("force") === "true" || requestUrl.searchParams.get("force") === "1";
+        const contentType = headerValue(request, "content-type") || undefined;
+        assertValidContentType(contentType);
+
+        const current = await existingObjectOrNull(() => withFreshS3(() => deps.headObject(client, bucket, key)));
+        if (current && !force) {
+          sendJson(response, 409, {
+            error: "Object already exists.",
+            current,
+          });
+          return;
+        }
+
+        const body = await readRequestBuffer(request);
+        await withFreshS3(() => deps.uploadObject(client, bucket, key, body, contentType));
+        const metadata = await withFreshS3(() => deps.headObject(client, bucket, key));
+        sendJson(response, 200, { metadata });
+        return;
+      }
+
       if (requestUrl.pathname === "/api/save") {
         if (request.method !== "POST") {
           response.writeHead(405, { Allow: "POST" });
@@ -509,17 +564,7 @@ export function createRequestHandler({
         const content = parsed.content;
         const bucket = parsed.bucket || config.bucket;
         if (!bucket) throw new Error("bucket is required.");
-        const current = await withFreshS3(() => deps.headObject(client, bucket, key)).catch((error: unknown) => {
-          const namedError = error as { name?: string; $metadata?: { httpStatusCode?: number } };
-          if (
-            namedError.name === "NotFound" ||
-            namedError.name === "NoSuchKey" ||
-            namedError.$metadata?.httpStatusCode === 404
-          ) {
-            return null;
-          }
-          throw error;
-        });
+        const current = await existingObjectOrNull(() => withFreshS3(() => deps.headObject(client, bucket, key)));
 
         if (parsed.create && current && !parsed.force) {
           sendJson(response, 409, {

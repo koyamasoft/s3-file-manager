@@ -25,6 +25,8 @@ const elements = {
   connectionLabel: document.querySelector("#connectionLabel"),
   newBucketButton: document.querySelector("#newBucketButton"),
   newButton: document.querySelector("#newButton"),
+  uploadFileButton: document.querySelector("#uploadFileButton"),
+  uploadFileInput: document.querySelector("#uploadFileInput"),
   refreshButton: document.querySelector("#refreshButton"),
   prefixForm: document.querySelector("#prefixForm"),
   bucketSearchInput: document.querySelector("#bucketSearchInput"),
@@ -134,6 +136,7 @@ function updateWriteControls() {
     (state.isNew || !!state.metadata) &&
     elements.previewPane.classList.contains("hidden");
   elements.newButton.disabled = !state.allowWrite;
+  elements.uploadFileButton.disabled = !state.allowWrite;
   elements.newBucketButton.disabled = !state.allowCreateBucket;
   elements.saveButton.disabled = !state.allowWrite || !canSaveSelection;
   elements.addEnvRowButton.disabled = !state.allowWrite;
@@ -851,6 +854,63 @@ function normalizeNewKey(input, prefix) {
   return key.startsWith(normalizedPrefix) ? key : `${normalizedPrefix}${key}`;
 }
 
+function initialUploadKey(file) {
+  return normalizeNewKey(file.name || "upload.bin", currentPrefix());
+}
+
+async function uploadLocalFile(file, force = false, key = null) {
+  if (!state.allowWrite) {
+    showToast("読み取り専用です。画面右上の「保存 OFF」から保存を有効にしてください。", "error");
+    return;
+  }
+  if (!state.selectedBucket) {
+    showToast("バケットを選択してください。", "error");
+    return;
+  }
+
+  const targetKey = key ?? normalizeNewKey(
+    window.prompt("アップロード先のキーを入力してください。", initialUploadKey(file)) ?? "",
+    currentPrefix(),
+  );
+  if (!targetKey) return;
+
+  const params = new URLSearchParams({
+    bucket: state.selectedBucket,
+    key: targetKey,
+  });
+  if (force) params.set("force", "true");
+
+  const headers = {};
+  if (file.type) headers["Content-Type"] = file.type;
+
+  try {
+    const result = await requestJson(`/api/upload?${params.toString()}`, {
+      method: "POST",
+      headers,
+      body: file,
+    });
+    state.selectedKey = targetKey;
+    state.metadata = result.metadata;
+    state.currentContentType = result.metadata?.contentType ?? file.type ?? null;
+    state.isNew = false;
+    await loadObjects();
+    showToast("ローカルファイルをアップロードしました。");
+    try {
+      await openObject(targetKey);
+    } catch (error) {
+      clearSelection();
+      showToast(`アップロードしましたが表示できません: ${error.message}`, "error");
+    }
+  } catch (error) {
+    if (error.status === 409) {
+      const overwrite = window.confirm("同じキーのオブジェクトが既にあります。上書きしますか？");
+      if (overwrite) await uploadLocalFile(file, true, targetKey);
+      return;
+    }
+    throw error;
+  }
+}
+
 function createNewObject() {
   if (!state.allowWrite) {
     showToast("読み取り専用です。画面右上の「保存 OFF」から保存を有効にしてください。", "error");
@@ -1071,6 +1131,23 @@ elements.loadMoreButton.addEventListener("click", async () => {
 });
 
 elements.newButton.addEventListener("click", createNewObject);
+elements.uploadFileButton.addEventListener("click", () => {
+  if (!state.allowWrite) {
+    showToast("読み取り専用です。画面右上の「保存 OFF」から保存を有効にしてください。", "error");
+    return;
+  }
+  if (!state.selectedBucket) {
+    showToast("バケットを選択してください。", "error");
+    return;
+  }
+  elements.uploadFileInput.click();
+});
+elements.uploadFileInput.addEventListener("change", () => {
+  const file = elements.uploadFileInput.files?.[0];
+  elements.uploadFileInput.value = "";
+  if (!file) return;
+  uploadLocalFile(file).catch((error) => showToast(error.message, "error"));
+});
 elements.newBucketButton.addEventListener("click", async () => {
   try {
     await createNewBucket();

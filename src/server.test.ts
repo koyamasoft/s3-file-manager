@@ -21,7 +21,7 @@ type TestRequestOptions = {
   method?: string;
   host?: string;
   headers?: Record<string, string>;
-  body?: string;
+  body?: string | Buffer;
 };
 
 const baseConfig: ToolConfig = {
@@ -111,6 +111,7 @@ async function requestRaw(
   options: TestRequestOptions = {},
 ): Promise<RawTestResponse> {
   const body = options.body ?? "";
+  const bodyLength = typeof body === "string" ? Buffer.byteLength(body) : body.byteLength;
   return await new Promise<RawTestResponse>((resolveRequest, reject) => {
     const request = httpRequest({
       hostname: "127.0.0.1",
@@ -119,7 +120,7 @@ async function requestRaw(
       method: options.method ?? "GET",
       headers: {
         Host: options.host ?? `127.0.0.1:${port}`,
-        ...(body && { "Content-Length": String(Buffer.byteLength(body)) }),
+        ...(bodyLength > 0 && { "Content-Length": String(bodyLength) }),
         ...options.headers,
       },
     }, (response) => {
@@ -135,7 +136,7 @@ async function requestRaw(
       });
     });
     request.on("error", reject);
-    if (body) request.write(body);
+    if (bodyLength > 0) request.write(body);
     request.end();
   });
 }
@@ -454,6 +455,157 @@ test("server rejects invalid Content-Type on /api/save before uploading", async 
         content: "hello",
         contentType: "text/plain\r\nx-injected: yes",
       }),
+    });
+
+    assert.equal(response.statusCode, 400);
+    assert.equal(response.json.error, "Content-Type must be a valid MIME type.");
+    assert.equal(heads, 0);
+    assert.equal(uploads, 0);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("server uploads local file bytes through /api/upload", async () => {
+  const options = { ...baseOptions(), allowWrite: true };
+  let heads = 0;
+  const uploaded: unknown[] = [];
+  const { server, port } = await startTestServer(options, {
+    options,
+    config: { ...baseConfig, bucket: "my-bucket" },
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+      headObject: async (_client, _bucket, key) => {
+        heads += 1;
+        if (heads === 1) throw missingObjectError();
+        return metadata(key, "\"uploaded\"");
+      },
+      uploadObject: async (_client, bucket, key, body, contentType) => {
+        uploaded.push([bucket, key, body.toString("utf8"), contentType]);
+      },
+    },
+  });
+
+  try {
+    const response = await requestJson(port, "/api/upload?bucket=my-bucket&key=notes%2Fupload.txt", {
+      method: "POST",
+      headers: {
+        ...writeHeaders(port),
+        "Content-Type": "text/plain",
+      },
+      body: Buffer.from("hello upload"),
+    });
+
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(uploaded, [["my-bucket", "notes/upload.txt", "hello upload", "text/plain"]]);
+    assert.deepEqual(response.json.metadata, metadata("notes/upload.txt", "\"uploaded\""));
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("server rejects /api/upload when writing is disabled", async () => {
+  const options = baseOptions();
+  let uploads = 0;
+  const { server, port } = await startTestServer(options, {
+    options,
+    config: { ...baseConfig, bucket: "my-bucket" },
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+      uploadObject: async () => {
+        uploads += 1;
+      },
+    },
+  });
+
+  try {
+    const response = await requestJson(port, "/api/upload?key=notes%2Fupload.txt", {
+      method: "POST",
+      headers: writeHeaders(port),
+      body: Buffer.from("hello"),
+    });
+
+    assert.equal(response.statusCode, 403);
+    assert.equal(response.json.error, "Writing is disabled. Start with --allow-write to enable uploads.");
+    assert.equal(uploads, 0);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("server rejects /api/upload when object exists unless forced", async () => {
+  const options = { ...baseOptions(), allowWrite: true };
+  const uploaded: unknown[] = [];
+  const { server, port } = await startTestServer(options, {
+    options,
+    config: { ...baseConfig, bucket: "my-bucket" },
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+      headObject: async (_client, _bucket, key) => metadata(key),
+      uploadObject: async (_client, bucket, key, body, contentType) => {
+        uploaded.push([bucket, key, body.toString("utf8"), contentType]);
+      },
+    },
+  });
+
+  try {
+    const conflict = await requestJson(port, "/api/upload?key=notes%2Fupload.txt", {
+      method: "POST",
+      headers: writeHeaders(port),
+      body: Buffer.from("hello"),
+    });
+
+    assert.equal(conflict.statusCode, 409);
+    assert.equal(conflict.json.error, "Object already exists.");
+    assert.deepEqual(uploaded, []);
+
+    const forced = await requestJson(port, "/api/upload?key=notes%2Fupload.txt&force=true", {
+      method: "POST",
+      headers: {
+        ...writeHeaders(port),
+        "Content-Type": "application/octet-stream",
+      },
+      body: Buffer.from("hello"),
+    });
+
+    assert.equal(forced.statusCode, 200);
+    assert.deepEqual(uploaded, [["my-bucket", "notes/upload.txt", "hello", "application/octet-stream"]]);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("server rejects invalid Content-Type on /api/upload before reading the body", async () => {
+  const options = { ...baseOptions(), allowWrite: true };
+  let heads = 0;
+  let uploads = 0;
+  const { server, port } = await startTestServer(options, {
+    options,
+    config: { ...baseConfig, bucket: "my-bucket" },
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+      headObject: async (_client, _bucket, key) => {
+        heads += 1;
+        return metadata(key);
+      },
+      uploadObject: async () => {
+        uploads += 1;
+      },
+    },
+  });
+
+  try {
+    const response = await requestJson(port, "/api/upload?key=notes%2Fupload.txt", {
+      method: "POST",
+      headers: {
+        ...writeHeaders(port),
+        "Content-Type": "not-a-mime-type",
+      },
+      body: Buffer.from("hello"),
     });
 
     assert.equal(response.statusCode, 400);

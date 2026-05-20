@@ -206,6 +206,16 @@ select {
   border-bottom: 1px solid var(--line);
 }
 
+.object-filter-row {
+  flex: 0 0 auto;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.object-filter-row input {
+  width: 100%;
+}
+
 .object-list {
   flex: 1 1 auto;
   min-height: 0;
@@ -255,6 +265,12 @@ select {
   min-height: 42px;
   background: #fff;
   color: var(--muted);
+}
+
+.object-list-empty {
+  padding: 18px 20px;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .object-key {

@@ -33,6 +33,7 @@ const elements = {
   bucketSuggestions: document.querySelector("#bucketSuggestions"),
   prefixInput: document.querySelector("#prefixInput"),
   prefixSuggestions: document.querySelector("#prefixSuggestions"),
+  objectFilterInput: document.querySelector("#objectFilterInput"),
   objectCount: document.querySelector("#objectCount"),
   objectList: document.querySelector("#objectList"),
   loadMoreRow: document.querySelector("#loadMoreRow"),
@@ -193,9 +194,18 @@ function parentPrefix(prefix) {
   return index === -1 ? "" : `${normalized.slice(0, index)}/`;
 }
 
+function currentObjectFilter() {
+  return elements.objectFilterInput.value.trim().toLowerCase();
+}
+
 function visibleObjectRows() {
   const prefix = currentPrefix();
-  return state.objects.filter((object) => object.key !== prefix);
+  const query = currentObjectFilter();
+  return state.objects.filter((object) => {
+    if (object.key === prefix) return false;
+    if (!query) return true;
+    return object.key.toLowerCase().includes(query);
+  });
 }
 
 function childPrefixes() {
@@ -249,7 +259,9 @@ function renderObjectList() {
   const folders = childPrefixes();
   const objects = directObjects();
   const count = objects.length + folders.length;
-  elements.objectCount.textContent = state.listTruncated ? `${count}+` : String(count);
+  const filter = currentObjectFilter();
+  const suffix = state.listTruncated ? "+" : "";
+  elements.objectCount.textContent = filter ? `${count}/${state.objects.length}${suffix}` : `${count}${suffix}`;
   elements.objectList.replaceChildren();
 
   if (currentPrefix()) {
@@ -279,6 +291,13 @@ function renderObjectList() {
         openObject(object.key).catch((error) => showToast(error.message, "error"));
       },
     });
+  }
+
+  if (filter && count === 0) {
+    const item = document.createElement("li");
+    item.className = "object-list-empty";
+    item.textContent = "一致する object はありません。";
+    elements.objectList.append(item);
   }
 
   elements.loadMoreRow.classList.toggle("hidden", !state.listContinuationToken);
@@ -1152,6 +1171,17 @@ elements.prefixInput.addEventListener("blur", () => {
   window.setTimeout(() => {
     renderPrefixSuggestions(false);
   }, 120);
+});
+
+elements.objectFilterInput.addEventListener("input", () => {
+  renderObjectList();
+});
+
+elements.objectFilterInput.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    elements.objectFilterInput.value = "";
+    renderObjectList();
+  }
 });
 
 elements.bucketSearchInput.addEventListener("focus", () => {

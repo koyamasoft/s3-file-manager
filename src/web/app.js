@@ -858,6 +858,39 @@ function initialUploadKey(file) {
   return normalizeNewKey(file.name || "upload.bin", currentPrefix());
 }
 
+async function uploadFileToKey(file, targetKey, { force = false } = {}) {
+  const params = new URLSearchParams({
+    bucket: state.selectedBucket,
+    key: targetKey,
+  });
+  if (force) params.set("force", "true");
+
+  const headers = {};
+  if (file.type) headers["Content-Type"] = file.type;
+
+  const result = await requestJson(`/api/upload?${params.toString()}`, {
+    method: "POST",
+    headers,
+    body: file,
+  });
+
+  return result.metadata;
+}
+
+async function openUploadedObject(targetKey, metadata, file) {
+  state.selectedKey = targetKey;
+  state.metadata = metadata;
+  state.currentContentType = metadata?.contentType ?? file.type ?? null;
+  state.isNew = false;
+  await loadObjects();
+  try {
+    await openObject(targetKey);
+  } catch (error) {
+    clearSelection();
+    showToast(`アップロードしましたが表示できません: ${error.message}`, "error");
+  }
+}
+
 async function uploadLocalFile(file, force = false, key = null) {
   if (!state.allowWrite) {
     showToast("読み取り専用です。画面右上の「保存 OFF」から保存を有効にしてください。", "error");
@@ -874,33 +907,10 @@ async function uploadLocalFile(file, force = false, key = null) {
   );
   if (!targetKey) return;
 
-  const params = new URLSearchParams({
-    bucket: state.selectedBucket,
-    key: targetKey,
-  });
-  if (force) params.set("force", "true");
-
-  const headers = {};
-  if (file.type) headers["Content-Type"] = file.type;
-
   try {
-    const result = await requestJson(`/api/upload?${params.toString()}`, {
-      method: "POST",
-      headers,
-      body: file,
-    });
-    state.selectedKey = targetKey;
-    state.metadata = result.metadata;
-    state.currentContentType = result.metadata?.contentType ?? file.type ?? null;
-    state.isNew = false;
-    await loadObjects();
+    const metadata = await uploadFileToKey(file, targetKey, { force });
     showToast("ローカルファイルをアップロードしました。");
-    try {
-      await openObject(targetKey);
-    } catch (error) {
-      clearSelection();
-      showToast(`アップロードしましたが表示できません: ${error.message}`, "error");
-    }
+    await openUploadedObject(targetKey, metadata, file);
   } catch (error) {
     if (error.status === 409) {
       const overwrite = window.confirm("同じキーのオブジェクトが既にあります。上書きしますか？");
@@ -908,6 +918,64 @@ async function uploadLocalFile(file, force = false, key = null) {
       return;
     }
     throw error;
+  }
+}
+
+async function uploadMultipleFiles(files) {
+  if (!state.allowWrite) {
+    showToast("読み取り専用です。画面右上の「保存 OFF」から保存を有効にしてください。", "error");
+    return;
+  }
+  if (!state.selectedBucket) {
+    showToast("バケットを選択してください。", "error");
+    return;
+  }
+  if (files.length === 0) return;
+  if (files.length === 1) {
+    await uploadLocalFile(files[0]);
+    return;
+  }
+
+  const prefix = currentPrefix();
+  const targetKeys = files.map((file) => initialUploadKey(file));
+  if (!window.confirm(`${files.length}件のファイルを ${prefix || "(root)"} にアップロードしますか？`)) return;
+
+  const uploaded = [];
+  const conflicts = [];
+  const failures = [];
+
+  for (const [index, file] of files.entries()) {
+    const targetKey = targetKeys[index];
+    try {
+      const metadata = await uploadFileToKey(file, targetKey);
+      uploaded.push({ file, key: targetKey, metadata });
+    } catch (error) {
+      if (error.status === 409) {
+        conflicts.push({ file, key: targetKey });
+      } else {
+        failures.push({ file, key: targetKey, error });
+      }
+    }
+  }
+
+  if (conflicts.length > 0 && window.confirm(`${conflicts.length}件は同じキーが既にあります。衝突分だけ上書きしますか？`)) {
+    for (const item of conflicts.splice(0)) {
+      try {
+        const metadata = await uploadFileToKey(item.file, item.key, { force: true });
+        uploaded.push({ ...item, metadata });
+      } catch (error) {
+        failures.push({ ...item, error });
+      }
+    }
+  }
+
+  await loadObjects();
+  const skipped = conflicts.length;
+  const message = `アップロード完了: 成功 ${uploaded.length}件 / 衝突スキップ ${skipped}件 / 失敗 ${failures.length}件`;
+  showToast(message, failures.length > 0 ? "error" : "info");
+  if (uploaded.length > 0) {
+    const last = uploaded[uploaded.length - 1];
+    await openUploadedObject(last.key, last.metadata, last.file);
   }
 }
 
@@ -1143,10 +1211,9 @@ elements.uploadFileButton.addEventListener("click", () => {
   elements.uploadFileInput.click();
 });
 elements.uploadFileInput.addEventListener("change", () => {
-  const file = elements.uploadFileInput.files?.[0];
+  const files = [...(elements.uploadFileInput.files ?? [])];
   elements.uploadFileInput.value = "";
-  if (!file) return;
-  uploadLocalFile(file).catch((error) => showToast(error.message, "error"));
+  uploadMultipleFiles(files).catch((error) => showToast(error.message, "error"));
 });
 elements.newBucketButton.addEventListener("click", async () => {
   try {

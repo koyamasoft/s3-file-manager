@@ -2,3 +2,5 @@ node_modules/
 dist/
 .s3-work/
 .env
+.env.local
+.env.*.local

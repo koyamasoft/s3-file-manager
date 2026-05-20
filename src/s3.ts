@@ -13,12 +13,20 @@ import {
 import type { ToolConfig } from "./config.js";
 import { contentTypeFor } from "./file.js";
 
+export const DEFAULT_LIST_OBJECT_LIMIT = 1_000;
+
 export type ObjectMetadata = {
   key: string;
   etag?: string;
   contentType?: string;
   contentLength?: number;
   lastModified?: string;
+};
+
+export type ListObjectsResult = {
+  objects: _Object[];
+  isTruncated: boolean;
+  nextContinuationToken?: string;
 };
 
 export function createS3Client(config: ToolConfig): S3Client {
@@ -35,21 +43,21 @@ export async function listObjects(
   client: S3Client,
   bucket: string,
   prefix: string,
-): Promise<_Object[]> {
-  const objects: _Object[] = [];
-  let continuationToken: string | undefined;
+  limit = DEFAULT_LIST_OBJECT_LIMIT,
+  continuationToken?: string,
+): Promise<ListObjectsResult> {
+  const result = await client.send(new ListObjectsV2Command({
+    Bucket: bucket,
+    Prefix: prefix || undefined,
+    ContinuationToken: continuationToken,
+    MaxKeys: Math.min(Math.max(limit, 1), 1_000),
+  }));
 
-  do {
-    const result = await client.send(new ListObjectsV2Command({
-      Bucket: bucket,
-      Prefix: prefix || undefined,
-      ContinuationToken: continuationToken,
-    }));
-    objects.push(...(result.Contents ?? []));
-    continuationToken = result.NextContinuationToken;
-  } while (continuationToken);
-
-  return objects;
+  return {
+    objects: result.Contents ?? [],
+    isTruncated: !!result.NextContinuationToken,
+    nextContinuationToken: result.NextContinuationToken,
+  };
 }
 
 export async function listBuckets(client: S3Client): Promise<Bucket[]> {

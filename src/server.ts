@@ -6,10 +6,11 @@ import { basename, extname, isAbsolute, relative, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { getConfig, refreshAwsCredentialEnv, type GlobalOptions } from "./config.js";
-import { isCredentialError } from "./credentials.js";
+import { createCredentialRefreshError, credentialErrorMessage, isCredentialError } from "./credentials.js";
 import { isTextKey } from "./file.js";
 import {
   createBucket,
+  DEFAULT_LIST_OBJECT_LIMIT,
   createS3Client,
   downloadObject,
   getObjectForDownload,
@@ -191,6 +192,19 @@ function isAllowedLocalOrigin(origin: string | undefined, port: number): boolean
   }
 }
 
+function isAllowedHost(host: string | undefined, port: number): boolean {
+  if (!host) return false;
+  if (/[@/\\\s]/.test(host)) return false;
+  try {
+    const parsed = new URL(`http://${host}`);
+    const hostAllowed = parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost";
+    const portAllowed = parsed.port === String(port);
+    return hostAllowed && portAllowed;
+  } catch {
+    return false;
+  }
+}
+
 function validateWriteRequest(request: IncomingMessage, port: number, csrfToken: string): boolean {
   const method = request.method ?? "GET";
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") return true;
@@ -255,15 +269,27 @@ async function main(): Promise<void> {
       client.destroy();
       refreshAwsCredentialEnv(options.envFile);
       client = createS3Client(config);
-      return operation();
+      console.warn(`AWS credentials were refreshed. Retry count: ${credentialRefreshes}`);
+      try {
+        return await operation();
+      } catch (retryError) {
+        if (!isCredentialError(retryError)) throw retryError;
+        console.warn(`AWS credential refresh retry failed: ${credentialErrorMessage(retryError)}`);
+        throw createCredentialRefreshError(retryError, credentialRefreshes);
+      }
     }
   }
 
   const server = createServer(async (request, response) => {
-    const host = request.headers.host ?? "127.0.0.1";
-    const requestUrl = new URL(request.url ?? "/", `http://${host}`);
-
     try {
+      if (!isAllowedHost(request.headers.host, options.port)) {
+        sendJson(response, 403, { error: "Forbidden host." });
+        return;
+      }
+
+      const host = request.headers.host ?? "127.0.0.1";
+      const requestUrl = new URL(request.url ?? "/", `http://${host}`);
+
       if (request.method === "OPTIONS") {
         response.writeHead(204, {
           Allow: "GET, HEAD, POST, OPTIONS",
@@ -340,10 +366,16 @@ async function main(): Promise<void> {
 
       if (requestUrl.pathname === "/api/list") {
         const prefix = requestUrl.searchParams.get("prefix") ?? "";
+        const continuationToken = requestUrl.searchParams.get("continuationToken") ?? undefined;
         const bucket = bucketFromRequest(requestUrl, config.bucket ?? "");
         if (!bucket) throw new Error("bucket is required.");
-        const objects = await withFreshS3(() => listObjects(client, bucket, prefix));
+        const { objects, isTruncated, nextContinuationToken } = await withFreshS3(() =>
+          listObjects(client, bucket, prefix, DEFAULT_LIST_OBJECT_LIMIT, continuationToken)
+        );
         sendJson(response, 200, {
+          isTruncated,
+          nextContinuationToken: nextContinuationToken ?? null,
+          limit: DEFAULT_LIST_OBJECT_LIMIT,
           objects: objects.map((object) => ({
             key: object.Key ?? "",
             size: object.Size ?? 0,

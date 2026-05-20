@@ -215,6 +215,17 @@ select {
   overflow: auto;
 }
 
+.load-more-row {
+  flex: 0 0 auto;
+  padding: 12px 20px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.load-more-row button {
+  width: 100%;
+}
+
 .object-list button {
   width: 100%;
   min-height: 58px;

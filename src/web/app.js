@@ -3,6 +3,10 @@ const state = {
   buckets: [],
   selectedBucket: null,
   objects: [],
+  listTruncated: false,
+  listLimit: 1000,
+  listContinuationToken: null,
+  loadingMore: false,
   selectedKey: null,
   metadata: null,
   originalContent: "",
@@ -29,6 +33,8 @@ const elements = {
   prefixSuggestions: document.querySelector("#prefixSuggestions"),
   objectCount: document.querySelector("#objectCount"),
   objectList: document.querySelector("#objectList"),
+  loadMoreRow: document.querySelector("#loadMoreRow"),
+  loadMoreButton: document.querySelector("#loadMoreButton"),
   selectedKey: document.querySelector("#selectedKey"),
   modeBadge: document.querySelector("#modeBadge"),
   warningBanner: document.querySelector("#warningBanner"),
@@ -239,7 +245,8 @@ function appendObjectButton({ className = "", label, meta, active = false, onCli
 function renderObjectList() {
   const folders = childPrefixes();
   const objects = directObjects();
-  elements.objectCount.textContent = String(objects.length + folders.length);
+  const count = objects.length + folders.length;
+  elements.objectCount.textContent = state.listTruncated ? `${count}+` : String(count);
   elements.objectList.replaceChildren();
 
   if (currentPrefix()) {
@@ -270,6 +277,10 @@ function renderObjectList() {
       },
     });
   }
+
+  elements.loadMoreRow.classList.toggle("hidden", !state.listContinuationToken);
+  elements.loadMoreButton.disabled = state.loadingMore;
+  elements.loadMoreButton.textContent = state.loadingMore ? "読み込み中..." : "さらに読み込む";
 }
 
 function bucketNames() {
@@ -666,10 +677,12 @@ async function loadBuckets() {
   updateConnectionLabel();
 }
 
-async function loadObjects() {
+async function loadObjects({ append = false } = {}) {
   const prefix = currentPrefix();
   if (!state.selectedBucket) {
     state.objects = [];
+    state.listTruncated = false;
+    state.listContinuationToken = null;
     renderObjectList();
     throw new Error("バケットを選択してください。");
   }
@@ -677,10 +690,31 @@ async function loadObjects() {
     bucket: state.selectedBucket,
     prefix,
   });
+  if (append && state.listContinuationToken) {
+    params.set("continuationToken", state.listContinuationToken);
+  }
   const data = await requestJson(`/api/list?${params.toString()}`);
-  state.objects = data.objects;
+  state.objects = append ? [...state.objects, ...data.objects] : data.objects;
+  state.listTruncated = !!data.isTruncated;
+  state.listLimit = data.limit ?? 1000;
+  state.listContinuationToken = data.nextContinuationToken ?? null;
   renderObjectList();
   renderPrefixSuggestions(false);
+  if (!append && state.listTruncated) {
+    showToast(`${state.listLimit}件まで表示しています。続きは「さらに読み込む」から表示できます。`);
+  }
+}
+
+async function loadMoreObjects() {
+  if (!state.listContinuationToken || state.loadingMore) return;
+  state.loadingMore = true;
+  renderObjectList();
+  try {
+    await loadObjects({ append: true });
+  } finally {
+    state.loadingMore = false;
+    renderObjectList();
+  }
 }
 
 function clearSelection() {
@@ -1023,6 +1057,14 @@ elements.refreshButton.addEventListener("click", async () => {
   try {
     await loadObjects();
     showToast("一覧を更新しました。");
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+});
+
+elements.loadMoreButton.addEventListener("click", async () => {
+  try {
+    await loadMoreObjects();
   } catch (error) {
     showToast(error.message, "error");
   }

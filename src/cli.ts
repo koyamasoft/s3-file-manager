@@ -2,7 +2,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { getConfig, refreshAwsCredentialEnv, type GlobalOptions } from "./config.js";
-import { isCredentialError } from "./credentials.js";
+import { createCredentialRefreshError, credentialErrorMessage, isCredentialError } from "./credentials.js";
 import {
   confirm,
   fileSize,
@@ -17,6 +17,7 @@ import {
 } from "./file.js";
 import {
   createS3Client,
+  DEFAULT_LIST_OBJECT_LIMIT,
   downloadObject,
   headObject,
   listObjects,
@@ -207,7 +208,13 @@ async function main(): Promise<void> {
       refreshAwsCredentialEnv(parsed.options.envFile);
       client = createS3Client(config);
       console.warn(`AWS credentials were refreshed. Retry count: ${credentialRefreshes}`);
-      return operation();
+      try {
+        return await operation();
+      } catch (retryError) {
+        if (!isCredentialError(retryError)) throw retryError;
+        console.warn(`AWS credential refresh retry failed: ${credentialErrorMessage(retryError)}`);
+        throw createCredentialRefreshError(retryError, credentialRefreshes);
+      }
     }
   }
   const getClient = () => client;
@@ -216,13 +223,16 @@ async function main(): Promise<void> {
   switch (parsed.command) {
     case "list": {
       const prefix = commandArgs[0] ?? "";
-      const objects = await withFreshS3(() => listObjects(client, bucket, prefix));
+      const { objects, isTruncated } = await withFreshS3(() => listObjects(client, bucket, prefix));
       if (objects.length === 0) {
         console.log("(no objects)");
         return;
       }
       for (const object of objects) {
         console.log(`${object.Key}\t${formatBytes(object.Size)}\t${object.LastModified?.toISOString() ?? "-"}`);
+      }
+      if (isTruncated) {
+        console.warn(`List truncated at ${DEFAULT_LIST_OBJECT_LIMIT} objects. Narrow the prefix to see more.`);
       }
       return;
     }

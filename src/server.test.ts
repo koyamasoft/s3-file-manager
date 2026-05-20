@@ -505,6 +505,105 @@ test("server uploads local file bytes through /api/upload", async () => {
   }
 });
 
+test("server preserves binary bytes and normalizes leading slashes on /api/upload keys", async () => {
+  const options = { ...baseOptions(), allowWrite: true };
+  let heads = 0;
+  const uploaded: unknown[] = [];
+  const { server, port } = await startTestServer(options, {
+    options,
+    config: { ...baseConfig, bucket: "my-bucket" },
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+      headObject: async (_client, _bucket, key) => {
+        heads += 1;
+        if (heads === 1) throw missingObjectError();
+        return metadata(key, "\"uploaded\"");
+      },
+      uploadObject: async (_client, bucket, key, body, contentType) => {
+        uploaded.push([bucket, key, [...body], contentType]);
+      },
+    },
+  });
+
+  try {
+    const body = Buffer.from([0, 1, 2, 127, 128, 255]);
+    const response = await requestJson(port, "/api/upload?bucket=my-bucket&key=%2Fimages%2Fraw.bin", {
+      method: "POST",
+      headers: {
+        ...writeHeaders(port),
+        "Content-Type": "application/octet-stream",
+      },
+      body,
+    });
+
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(uploaded, [["my-bucket", "images/raw.bin", [0, 1, 2, 127, 128, 255], "application/octet-stream"]]);
+    assert.deepEqual(response.json.metadata, metadata("images/raw.bin", "\"uploaded\""));
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("server requires CSRF and local request context for /api/upload", async () => {
+  const options = { ...baseOptions(), allowWrite: true };
+  let heads = 0;
+  let uploads = 0;
+  const { server, port } = await startTestServer(options, {
+    options,
+    config: { ...baseConfig, bucket: "my-bucket" },
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+      headObject: async (_client, _bucket, key) => {
+        heads += 1;
+        return metadata(key);
+      },
+      uploadObject: async () => {
+        uploads += 1;
+      },
+    },
+  });
+
+  try {
+    const missingToken = await requestJson(port, "/api/upload?key=notes%2Fupload.txt", {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: Buffer.from("hello"),
+    });
+    assert.equal(missingToken.statusCode, 403);
+    assert.equal(missingToken.json.error, "Forbidden.");
+
+    const wrongOrigin = await requestJson(port, "/api/upload?key=notes%2Fupload.txt", {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain",
+        "X-S3FM-CSRF": "test-token",
+        Origin: "http://evil.example",
+      },
+      body: Buffer.from("hello"),
+    });
+    assert.equal(wrongOrigin.statusCode, 403);
+    assert.equal(wrongOrigin.json.error, "Forbidden.");
+
+    const crossSite = await requestJson(port, "/api/upload?key=notes%2Fupload.txt", {
+      method: "POST",
+      headers: {
+        ...writeHeaders(port),
+        "Sec-Fetch-Site": "cross-site",
+      },
+      body: Buffer.from("hello"),
+    });
+    assert.equal(crossSite.statusCode, 403);
+    assert.equal(crossSite.json.error, "Forbidden.");
+
+    assert.equal(heads, 0);
+    assert.equal(uploads, 0);
+  } finally {
+    await closeServer(server);
+  }
+});
+
 test("server rejects /api/upload when writing is disabled", async () => {
   const options = baseOptions();
   let uploads = 0;

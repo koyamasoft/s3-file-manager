@@ -4,10 +4,12 @@
   <rect x="0.5" y="0.5" width="1439" height="88" fill="#FFFFFF" stroke="#D8DEE8"/>
   <text x="28" y="38" fill="#17202A" font-family="Arial, sans-serif" font-size="28" font-weight="700">S3 File Manager</text>
   <text x="28" y="66" fill="#667085" font-family="Arial, sans-serif" font-size="15">example-assets-bucket · AWS S3</text>
+  <rect x="162" y="24" width="38" height="38" rx="7" fill="#126A5A"/>
+  <text x="174" y="51" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="25">□</text>
   <rect x="210" y="24" width="38" height="38" rx="7" fill="#126A5A"/>
-  <text x="222" y="51" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="25">□</text>
+  <text x="223" y="52" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="26">＋</text>
   <rect x="258" y="24" width="38" height="38" rx="7" fill="#126A5A"/>
-  <text x="271" y="52" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="26">＋</text>
+  <text x="271" y="52" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="24">↑</text>
   <rect x="306" y="24" width="38" height="38" rx="7" fill="#126A5A"/>
   <text x="318" y="52" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="24">↻</text>
 

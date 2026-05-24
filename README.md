@@ -19,6 +19,7 @@ AWS 認証情報はブラウザに渡しません。localhost の Node.js サー
 - key / S3 URI / download URL のコピー
 - `.env`, `.env.local`, `*.env` の key/value 編集
 - CLI での `list`, `head`, `get`, `show`, `diff`, `edit`, `put`
+- CLI でのオブジェクトコピー
 - 認証期限切れ時の S3 クライアント再作成と1回リトライ
 - MinIO / MiniStack などの S3 互換エンドポイント対応
 
@@ -127,6 +128,7 @@ npm run s3 -- head logs/example.json
 npm run s3 -- get logs/example.json
 npm run s3 -- show logs/example.json
 npm run s3 -- diff logs/example.json
+npm run s3 -- copy logs/example.json logs/example-copy.json
 npm run s3 -- edit logs/example.json
 npm run s3 -- put logs/example.json
 ```
@@ -138,6 +140,7 @@ npm run s3 -- put logs/example.json
 | `get <key>` | S3 から `.s3-work/objects/` にダウンロードします |
 | `show <key>` | テキスト系ファイルの中身を表示します |
 | `diff <key>` | S3 上の最新版とローカルファイルの差分を表示します |
+| `copy <source-key> <target-key>` | S3 上のオブジェクトを別 key にコピーします |
 | `edit <key>` | ダウンロード後に `$EDITOR` で開き、差分確認後にアップロードします |
 | `put <key>` | ローカルファイルを確認後にアップロードします |
 
@@ -146,6 +149,7 @@ npm run s3 -- put logs/example.json
 ```bash
 npm run s3 -- list --env ./path/to/.env
 npm run s3 -- get logs/example.json --out /tmp/example.json
+npm run s3 -- copy logs/example.json logs/example-copy.json --yes
 npm run s3 -- put logs/example.json --file /tmp/example.json
 npm run s3 -- put logs/example.json --yes
 ```
@@ -157,7 +161,7 @@ npm run s3 -- put logs/example.json --yes
 | `--endpoint <url>` | `S3_ENDPOINT` を上書きします |
 | `--region <name>` | `AWS_REGION` を上書きします |
 | `--workdir <path>` | 作業ディレクトリを上書きします |
-| `--yes` | アップロード前の確認を省略します |
+| `--yes` | アップロードやコピー前の確認を省略します |
 
 ## 設定
 
@@ -229,6 +233,7 @@ S3_FORCE_PATH_STYLE=true
 | 表示・プレビュー | `s3:GetObject`, `s3:HeadObject` |
 | ダウンロード | `s3:GetObject` |
 | アップロード | `s3:PutObject` |
+| コピー | コピー元に `s3:GetObject`、コピー先に `s3:PutObject` |
 
 読み取り中心の例:
 
@@ -268,6 +273,8 @@ S3_FORCE_PATH_STYLE=true
 }
 ```
 
+コピーも許可する場合は、コピー元オブジェクトへの `s3:GetObject` とコピー先オブジェクトへの `s3:PutObject` を許可してください。同じバケット内でコピーする場合は、上記の読み取り権限とアップロード権限の組み合わせで動きます。
+
 ## 安全仕様
 
 ### 認証情報
@@ -287,6 +294,7 @@ S3_FORCE_PATH_STYLE=true
 - `--allow-write` を指定すると、起動直後から保存ONで開始します。
 - Web UI の新規作成は、同じキーのオブジェクトが既にある場合に警告します。
 - Web UI のローカルファイルアップロードは、同じキーのオブジェクトが既にある場合に警告します。
+- Web UI と CLI のコピーは、コピー先に同じキーのオブジェクトが既にある場合に警告します。
 - Web UI のバケット作成は、`--allow-create-bucket` 指定時のみ有効です。
 - ダウンロード後に S3 側の ETag が変わっていた場合、アップロード前に警告します。
 - 削除コマンドはありません。
@@ -320,6 +328,22 @@ npm test
 ```
 
 `npm test` は TypeScript をビルドしてから、Node.js 標準のテストランナーでユニットテストを実行します。
+
+## リリースと公開
+
+public リポジトリとして公開する場合は、公開前に以下を確認してください。
+
+- `npm test` が通ること
+- `.env`, `.env.local`, `.s3-work/`, `dist/`, `node_modules/` をコミットしていないこと
+- README、Issue、PR、スクリーンショットに実バケット名、アカウントID、社内パスが残っていないこと
+- 書き込み系機能は必要最小限の IAM 権限で試すこと
+
+安定版の区切りは Git タグで管理します。
+
+```bash
+git tag -a v0.1.0 -m "v0.1.0"
+git push origin v0.1.0
+```
 
 ## トラブルシュート
 

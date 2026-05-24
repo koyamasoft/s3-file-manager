@@ -17,6 +17,7 @@ import {
   writeFileEnsured,
 } from "./file.js";
 import {
+  copyObject,
   createS3Client,
   DEFAULT_LIST_OBJECT_LIMIT,
   downloadObject,
@@ -39,6 +40,7 @@ type CliDependencies = {
   downloadObject: typeof downloadObject;
   headObject: typeof headObject;
   listObjects: typeof listObjects;
+  copyObject: typeof copyObject;
   uploadObject: typeof uploadObject;
   log: (message: string) => void;
   warn: (message: string) => void;
@@ -51,6 +53,7 @@ const defaultDependencies: CliDependencies = {
   downloadObject,
   headObject,
   listObjects,
+  copyObject,
   uploadObject,
   log: (message) => console.log(message),
   warn: (message) => console.warn(message),
@@ -65,6 +68,7 @@ Usage:
   npm run s3 -- get <key> [--out <path>]
   npm run s3 -- show <key>
   npm run s3 -- diff <key>
+  npm run s3 -- copy <source-key> <target-key> [--yes]
   npm run s3 -- put <key> [--file <path>] [--yes]
   npm run s3 -- edit <key> [--yes]
   npm run s3 -- head <key>
@@ -213,6 +217,64 @@ async function uploadWithChecks(
   log("Uploaded.");
 }
 
+function isMissingObjectError(error: unknown): boolean {
+  const namedError = error as { name?: string; $metadata?: { httpStatusCode?: number } };
+  return namedError.name === "NotFound" ||
+    namedError.name === "NoSuchKey" ||
+    namedError.$metadata?.httpStatusCode === 404;
+}
+
+async function headObjectOrNull(
+  operation: () => Promise<ObjectMetadata>,
+): Promise<ObjectMetadata | null> {
+  return await operation().catch((error: unknown) => {
+    if (isMissingObjectError(error)) return null;
+    throw error;
+  });
+}
+
+async function copyWithChecks(
+  withFreshS3: <T>(operation: () => Promise<T>) => Promise<T>,
+  getClient: () => ReturnType<typeof createS3Client>,
+  head: typeof headObject,
+  copy: typeof copyObject,
+  log: (message: string) => void,
+  warn: (message: string) => void,
+  bucket: string,
+  workDir: string,
+  sourceKey: string,
+  targetKey: string,
+  yes: boolean,
+): Promise<void> {
+  if (sourceKey === targetKey) {
+    throw new Error("copy requires different source and target keys.");
+  }
+
+  const source = await headObjectOrNull(() => withFreshS3(() => head(getClient(), bucket, sourceKey)));
+  if (!source) throw new Error(`Source object does not exist: ${sourceKey}`);
+
+  const target = await headObjectOrNull(() => withFreshS3(() => head(getClient(), bucket, targetKey)));
+  if (target) {
+    warn(`Warning: target object already exists: s3://${bucket}/${targetKey}`);
+  }
+
+  log(`Copy source: s3://${bucket}/${sourceKey}`);
+  log(`Copy target: s3://${bucket}/${targetKey}`);
+  log(`Source size: ${formatBytes(source.contentLength)}`);
+
+  const prompt = target ? "Overwrite target object?" : "Copy this object?";
+  if (!yes && !(await confirm(prompt))) {
+    log("Canceled.");
+    return;
+  }
+
+  await withFreshS3(() => copy(getClient(), bucket, sourceKey, targetKey));
+  const metadata = await withFreshS3(() => head(getClient(), bucket, targetKey));
+  saveMetadata(workDir, metadata);
+  log("Copied.");
+  printMetadata(metadata, log);
+}
+
 export async function runCli(
   argv: string[],
   dependencies: Partial<CliDependencies> = {},
@@ -336,6 +398,26 @@ export async function runCli(
         config.workDir,
         key,
         localPath,
+        parsed.options.yes,
+      );
+      return;
+    }
+
+    case "copy": {
+      const sourceKey = commandArgs[0];
+      const targetKey = commandArgs[1];
+      if (!sourceKey || !targetKey) throw new Error("copy requires <source-key> <target-key>.");
+      await copyWithChecks(
+        withFreshS3,
+        getClient,
+        deps.headObject,
+        deps.copyObject,
+        deps.log,
+        deps.warn,
+        bucket,
+        config.workDir,
+        sourceKey,
+        targetKey,
         parsed.options.yes,
       );
       return;

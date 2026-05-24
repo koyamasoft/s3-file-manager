@@ -60,8 +60,10 @@
   <text x="1075" y="38" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="14" font-weight="700">S3 URIコピー</text>
   <rect x="1138" y="16" width="86" height="34" rx="7" fill="#126A5A"/>
   <text x="1181" y="38" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="14" font-weight="700">URLコピー</text>
-  <rect x="1234" y="16" width="96" height="34" rx="7" fill="#126A5A"/>
-  <text x="1282" y="38" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="14" font-weight="700">ダウンロード</text>
+  <rect x="1234" y="16" width="64" height="34" rx="7" fill="#126A5A"/>
+  <text x="1266" y="38" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="14" font-weight="700">複製</text>
+  <rect x="1308" y="16" width="96" height="34" rx="7" fill="#126A5A"/>
+  <text x="1356" y="38" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="14" font-weight="700">ダウンロード</text>
   <rect x="650" y="56" width="64" height="28" rx="7" fill="#126A5A"/>
   <text x="682" y="75" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="13" font-weight="700">差分</text>
   <rect x="724" y="56" width="104" height="28" rx="7" fill="#126A5A"/>

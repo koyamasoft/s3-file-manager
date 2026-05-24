@@ -1,4 +1,5 @@
 import {
+  CopyObjectCommand,
   CreateBucketCommand,
   GetObjectCommand,
   type GetObjectCommandOutput,
@@ -139,5 +140,19 @@ export async function uploadObject(
     Key: key,
     Body: body,
     ContentType: contentType ?? contentTypeFor(key),
+  }));
+}
+
+export async function copyObject(
+  client: S3Client,
+  bucket: string,
+  sourceKey: string,
+  targetKey: string,
+): Promise<void> {
+  const copySource = `${bucket}/${sourceKey.split("/").map(encodeURIComponent).join("/")}`;
+  await client.send(new CopyObjectCommand({
+    Bucket: bucket,
+    Key: targetKey,
+    CopySource: copySource,
   }));
 }

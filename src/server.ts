@@ -9,6 +9,7 @@ import { getConfig, refreshAwsCredentialEnv, type GlobalOptions, type ToolConfig
 import { createCredentialRefreshError, credentialErrorMessage, isCredentialError } from "./credentials.js";
 import { isTextKey } from "./file.js";
 import {
+  copyObject,
   createBucket,
   DEFAULT_LIST_OBJECT_LIMIT,
   createS3Client,
@@ -35,6 +36,7 @@ export type ServerOptions = GlobalOptions & {
 type ServerDependencies = {
   createS3Client: typeof createS3Client;
   refreshAwsCredentialEnv: typeof refreshAwsCredentialEnv;
+  copyObject: typeof copyObject;
   createBucket: typeof createBucket;
   downloadObject: typeof downloadObject;
   getObjectForDownload: typeof getObjectForDownload;
@@ -64,6 +66,7 @@ const MIME_TYPES: Record<string, string> = {
 const defaultDependencies: ServerDependencies = {
   createS3Client,
   refreshAwsCredentialEnv,
+  copyObject,
   createBucket,
   downloadObject,
   getObjectForDownload,
@@ -537,6 +540,52 @@ export function createRequestHandler({
         const body = await readRequestBuffer(request);
         await withFreshS3(() => deps.uploadObject(client, bucket, key, body, contentType));
         const metadata = await withFreshS3(() => deps.headObject(client, bucket, key));
+        sendJson(response, 200, { metadata });
+        return;
+      }
+
+      if (requestUrl.pathname === "/api/copy") {
+        if (request.method !== "POST") {
+          response.writeHead(405, { Allow: "POST" });
+          response.end();
+          return;
+        }
+        if (!options.allowWrite) {
+          sendJson(response, 403, { error: "Writing is disabled. Start with --allow-write to enable object copy." });
+          return;
+        }
+
+        const rawBody = await readRequestBody(request);
+        const parsed = JSON.parse(rawBody) as {
+          sourceKey?: string;
+          targetKey?: string;
+          bucket?: string;
+          force?: boolean;
+        };
+        const sourceKey = parsed.sourceKey?.trim().replace(/^\/+/, "");
+        const targetKey = parsed.targetKey?.trim().replace(/^\/+/, "");
+        if (!sourceKey) throw new Error("sourceKey is required.");
+        if (!targetKey) throw new Error("targetKey is required.");
+        const bucket = parsed.bucket || config.bucket;
+        if (!bucket) throw new Error("bucket is required.");
+
+        const source = await existingObjectOrNull(() => withFreshS3(() => deps.headObject(client, bucket, sourceKey)));
+        if (!source) {
+          sendJson(response, 404, { error: "Source object does not exist." });
+          return;
+        }
+
+        const current = await existingObjectOrNull(() => withFreshS3(() => deps.headObject(client, bucket, targetKey)));
+        if (current && !parsed.force) {
+          sendJson(response, 409, {
+            error: "Object already exists.",
+            current,
+          });
+          return;
+        }
+
+        await withFreshS3(() => deps.copyObject(client, bucket, sourceKey, targetKey));
+        const metadata = await withFreshS3(() => deps.headObject(client, bucket, targetKey));
         sendJson(response, 200, { metadata });
         return;
       }

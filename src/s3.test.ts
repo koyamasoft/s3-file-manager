@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { listObjects } from "./s3.js";
+import { copyObject, listObjects } from "./s3.js";
 
 test("listObjects stops at the requested limit and reports truncation", async () => {
   const calls: unknown[] = [];
@@ -53,4 +53,22 @@ test("listObjects requests the page after a continuation token", async () => {
     ContinuationToken: "next-page",
     MaxKeys: 1000,
   });
+});
+
+test("copyObject URL-encodes CopySource and writes to the target key", async () => {
+  const calls: unknown[] = [];
+  const client = {
+    async send(command: { input: unknown }) {
+      calls.push(command.input);
+      return {};
+    },
+  };
+
+  await copyObject(client as never, "my-bucket", "docs/日本語 file.pdf", "docs/copy.pdf");
+
+  assert.deepEqual(calls, [{
+    Bucket: "my-bucket",
+    Key: "docs/copy.pdf",
+    CopySource: "my-bucket/docs/%E6%97%A5%E6%9C%AC%E8%AA%9E%20file.pdf",
+  }]);
 });

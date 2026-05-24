@@ -12,8 +12,9 @@ const objects = [
 ];
 
 type LoadWebAppOptions = {
-  fetchHandler?: (url: URL, init?: RequestInit) => Response | Promise<Response> | null | undefined;
+  fetchHandler?: (url: URL, init?: RequestInit) => Response | null | undefined | Promise<Response | null | undefined>;
   confirmResponses?: boolean[];
+  promptResponses?: string[];
 };
 
 async function loadWebApp(options: LoadWebAppOptions = {}) {
@@ -85,6 +86,7 @@ async function loadWebApp(options: LoadWebAppOptions = {}) {
     },
   });
   dom.window.confirm = () => options.confirmResponses?.shift() ?? true;
+  dom.window.prompt = () => options.promptResponses?.shift() ?? "";
 
   const appUrl = `${pathToFileURL(join(root, "src/web/app.js")).href}?t=${Date.now()}-${Math.random()}`;
   await import(appUrl);
@@ -200,4 +202,40 @@ test("Web UI shows upload conflict and failure details", async () => {
   assert.match(progressText, /詳細 2件/);
   assert.match(progressText, /衝突: exists\.txt/);
   assert.match(progressText, /失敗: ng\.txt \(broken upload\)/);
+});
+
+test("Web UI copies the selected object to another key", async () => {
+  const copyRequests: unknown[] = [];
+  const { dom } = await loadWebApp({
+    promptResponses: ["reports/report-copy.txt"],
+    fetchHandler: async (url, init) => {
+      if (url.pathname !== "/api/copy") return null;
+
+      copyRequests.push(JSON.parse(String(init?.body)));
+      return jsonResponse({
+        metadata: {
+          key: "reports/report-copy.txt",
+          etag: "\"copied\"",
+          contentType: "text/plain; charset=utf-8",
+          contentLength: 12,
+          lastModified: "2026-05-24T00:04:00.000Z",
+        },
+      });
+    },
+  });
+  const reportButton = [...dom.window.document.querySelectorAll<HTMLButtonElement>("#objectList button")]
+    .find((button) => button.textContent?.includes("report.txt"));
+  assert.ok(reportButton);
+
+  reportButton.click();
+  await waitFor(() => dom.window.document.querySelector("#selectedKey")?.textContent === "report.txt");
+  dom.window.document.querySelector<HTMLButtonElement>("#copyObjectButton")?.click();
+
+  await waitFor(() => dom.window.document.querySelector("#selectedKey")?.textContent === "reports/report-copy.txt");
+  assert.deepEqual(copyRequests, [{
+    bucket: "my-bucket",
+    sourceKey: "report.txt",
+    targetKey: "reports/report-copy.txt",
+    force: false,
+  }]);
 });

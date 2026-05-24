@@ -54,6 +54,7 @@ const elements = {
   copyKeyButton: document.querySelector("#copyKeyButton"),
   copyS3UriButton: document.querySelector("#copyS3UriButton"),
   copyDownloadUrlButton: document.querySelector("#copyDownloadUrlButton"),
+  copyObjectButton: document.querySelector("#copyObjectButton"),
   downloadButton: document.querySelector("#downloadButton"),
   saveButton: document.querySelector("#saveButton"),
   diffButton: document.querySelector("#diffButton"),
@@ -141,6 +142,7 @@ function updateDownloadButton() {
   const hasObjectKey = !!state.selectedBucket && !!state.selectedKey;
   elements.copyKeyButton.disabled = !hasObjectKey;
   elements.copyS3UriButton.disabled = !hasObjectKey;
+  elements.copyObjectButton.disabled = !state.allowWrite || !hasObjectKey || state.isNew;
 }
 
 function renderUploadProgress() {
@@ -969,6 +971,13 @@ function initialUploadKey(file) {
   return normalizeNewKey(file.name || "upload.bin", currentPrefix());
 }
 
+function defaultCopyKey(key) {
+  const parts = key.split("/");
+  const name = parts.pop() || "object";
+  parts.push(`copy-${name}`);
+  return parts.join("/");
+}
+
 function uploadTargetLabel() {
   const prefix = currentPrefix();
   return prefix || "(root)";
@@ -1001,6 +1010,47 @@ async function copyText(value, label) {
     showToast(`${label}をコピーしました。`);
   } catch (error) {
     showToast(`${label}をコピーできませんでした: ${error.message}`, "error");
+  }
+}
+
+async function copySelectedObject(force = false, targetKey = null) {
+  if (!state.allowWrite) {
+    showToast("読み取り専用です。画面右上の「保存 OFF」から保存を有効にしてください。", "error");
+    return;
+  }
+  if (!state.selectedBucket || !state.selectedKey || state.isNew) return;
+
+  const nextKey = targetKey ?? normalizeNewKey(
+    window.prompt("コピー先のキーを入力してください。", defaultCopyKey(state.selectedKey)) ?? "",
+    "",
+  );
+  if (!nextKey) return;
+  if (nextKey === state.selectedKey) {
+    showToast("コピー元とコピー先の key が同じです。", "error");
+    return;
+  }
+
+  try {
+    const result = await requestJson("/api/copy", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        bucket: state.selectedBucket,
+        sourceKey: state.selectedKey,
+        targetKey: nextKey,
+        force,
+      }),
+    });
+    await loadObjects();
+    await openObject(result.metadata?.key ?? nextKey);
+    showToast("オブジェクトを複製しました。");
+  } catch (error) {
+    if (error.status === 409) {
+      const overwrite = window.confirm("コピー先のオブジェクトが既にあります。上書きしますか？");
+      if (overwrite) await copySelectedObject(true, nextKey);
+      return;
+    }
+    throw error;
   }
 }
 
@@ -1444,6 +1494,14 @@ elements.copyS3UriButton.addEventListener("click", () => {
 elements.copyDownloadUrlButton.addEventListener("click", () => {
   if (!state.selectedKey || state.isNew) return;
   copyText(makeDownloadUrl(state.selectedKey), "download URL");
+});
+
+elements.copyObjectButton.addEventListener("click", async () => {
+  try {
+    await copySelectedObject();
+  } catch (error) {
+    showToast(error.message, "error");
+  }
 });
 
 elements.newButton.addEventListener("click", createNewObject);

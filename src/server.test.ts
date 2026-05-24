@@ -677,6 +677,92 @@ test("server rejects /api/upload when object exists unless forced", async () => 
   }
 });
 
+test("server copies objects only when writing is enabled and target is safe", async () => {
+  const disabledOptions = baseOptions();
+  let disabledCopies = 0;
+  const disabled = await startTestServer(disabledOptions, {
+    options: disabledOptions,
+    config: { ...baseConfig, bucket: "my-bucket" },
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+      copyObject: async () => {
+        disabledCopies += 1;
+      },
+    },
+  });
+
+  try {
+    const response = await requestJson(disabled.port, "/api/copy", {
+      method: "POST",
+      headers: writeHeaders(disabled.port),
+      body: JSON.stringify({ sourceKey: "notes/source.txt", targetKey: "notes/copy.txt" }),
+    });
+
+    assert.equal(response.statusCode, 403);
+    assert.equal(response.json.error, "Writing is disabled. Start with --allow-write to enable object copy.");
+    assert.equal(disabledCopies, 0);
+  } finally {
+    await closeServer(disabled.server);
+  }
+
+  const enabledOptions = { ...baseOptions(), allowWrite: true };
+  const copied: unknown[] = [];
+  const enabled = await startTestServer(enabledOptions, {
+    options: enabledOptions,
+    config: { ...baseConfig, bucket: "my-bucket" },
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+      headObject: async (_client, _bucket, key) => {
+        if (key === "notes/missing.txt") throw missingObjectError();
+        if (key === "notes/copy.txt") return metadata(key, "\"existing\"");
+        if (key === "notes/forced.txt") return copied.length === 0
+          ? metadata(key, "\"existing\"")
+          : metadata(key, "\"copied\"");
+        return metadata(key, "\"source\"");
+      },
+      copyObject: async (_client, bucket, sourceKey, targetKey) => {
+        copied.push([bucket, sourceKey, targetKey]);
+      },
+    },
+  });
+
+  try {
+    const missingSource = await requestJson(enabled.port, "/api/copy", {
+      method: "POST",
+      headers: writeHeaders(enabled.port),
+      body: JSON.stringify({ sourceKey: "notes/missing.txt", targetKey: "notes/new.txt" }),
+    });
+
+    assert.equal(missingSource.statusCode, 404);
+    assert.equal(missingSource.json.error, "Source object does not exist.");
+    assert.deepEqual(copied, []);
+
+    const conflict = await requestJson(enabled.port, "/api/copy", {
+      method: "POST",
+      headers: writeHeaders(enabled.port),
+      body: JSON.stringify({ sourceKey: "notes/source.txt", targetKey: "notes/copy.txt" }),
+    });
+
+    assert.equal(conflict.statusCode, 409);
+    assert.equal(conflict.json.error, "Object already exists.");
+    assert.deepEqual(copied, []);
+
+    const forced = await requestJson(enabled.port, "/api/copy", {
+      method: "POST",
+      headers: writeHeaders(enabled.port),
+      body: JSON.stringify({ sourceKey: "notes/source.txt", targetKey: "notes/forced.txt", force: true }),
+    });
+
+    assert.equal(forced.statusCode, 200);
+    assert.deepEqual(copied, [["my-bucket", "notes/source.txt", "notes/forced.txt"]]);
+    assert.deepEqual(forced.json.metadata, metadata("notes/forced.txt", "\"copied\""));
+  } finally {
+    await closeServer(enabled.server);
+  }
+});
+
 test("server rejects invalid Content-Type on /api/upload before reading the body", async () => {
   const options = { ...baseOptions(), allowWrite: true };
   let heads = 0;

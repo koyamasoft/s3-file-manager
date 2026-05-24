@@ -163,7 +163,35 @@ function renderUploadProgress() {
   value.style.width = `${progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0}%`;
   bar.append(value);
 
-  elements.uploadProgress.replaceChildren(count, detail, bar);
+  const children = [count, detail, bar];
+  const details = progress.details ?? [];
+  if (details.length > 0) {
+    const detailBox = document.createElement("details");
+    detailBox.className = "upload-detail";
+    detailBox.open = progress.done >= progress.total;
+
+    const summary = document.createElement("summary");
+    summary.textContent = `詳細 ${details.length}件`;
+
+    const list = document.createElement("ul");
+    const visibleDetails = details.slice(0, 20);
+    for (const item of visibleDetails) {
+      const row = document.createElement("li");
+      const type = item.type === "conflict" ? "衝突" : "失敗";
+      row.textContent = `${type}: ${item.key}${item.message ? ` (${item.message})` : ""}`;
+      list.append(row);
+    }
+    if (details.length > visibleDetails.length) {
+      const omitted = document.createElement("li");
+      omitted.className = "upload-detail-muted";
+      omitted.textContent = `ほか ${details.length - visibleDetails.length}件`;
+      list.append(omitted);
+    }
+    detailBox.append(summary, list);
+    children.push(detailBox);
+  }
+
+  elements.uploadProgress.replaceChildren(...children);
   elements.uploadProgress.classList.remove("hidden");
 }
 
@@ -1044,6 +1072,29 @@ function updateUploadProgress(values) {
   renderUploadProgress();
 }
 
+function uploadErrorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function uploadIssueDetails(conflicts, failures) {
+  return [
+    ...conflicts.map((item) => ({
+      type: "conflict",
+      key: item.key,
+      message: "同じキーが既にあります",
+    })),
+    ...failures.map((item) => ({
+      type: "failure",
+      key: item.key,
+      message: uploadErrorMessage(item.error),
+    })),
+  ];
+}
+
+function syncUploadIssueDetails(conflicts, failures) {
+  updateUploadProgress({ details: uploadIssueDetails(conflicts, failures) });
+}
+
 function finishUploadProgress(delay = 3200) {
   window.clearTimeout(finishUploadProgress.timer);
   finishUploadProgress.timer = window.setTimeout(() => {
@@ -1082,6 +1133,7 @@ async function uploadMultipleFiles(files, { direct = false } = {}) {
     uploaded: 0,
     conflicts: 0,
     failures: 0,
+    details: [],
   };
   renderUploadProgress();
 
@@ -1099,6 +1151,7 @@ async function uploadMultipleFiles(files, { direct = false } = {}) {
         failures.push({ file, key: targetKey, error });
         updateUploadProgress({ failures: failures.length });
       }
+      syncUploadIssueDetails(conflicts, failures);
     } finally {
       updateUploadProgress({ done: index + 1 });
     }
@@ -1110,6 +1163,7 @@ async function uploadMultipleFiles(files, { direct = false } = {}) {
       total: files.length + overwriteTargets.length,
       conflicts: conflicts.length,
     });
+    syncUploadIssueDetails(conflicts, failures);
     for (const item of overwriteTargets) {
       try {
         const metadata = await uploadFileToKey(item.file, item.key, { force: true });
@@ -1118,6 +1172,7 @@ async function uploadMultipleFiles(files, { direct = false } = {}) {
       } catch (error) {
         failures.push({ ...item, error });
         updateUploadProgress({ failures: failures.length });
+        syncUploadIssueDetails(conflicts, failures);
       } finally {
         updateUploadProgress({ done: state.uploadProgress.done + 1 });
       }

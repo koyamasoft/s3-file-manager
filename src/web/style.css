@@ -400,6 +400,33 @@ select {
   font-size: 13px;
 }
 
+.upload-detail {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.upload-detail summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.upload-detail ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  max-height: 160px;
+  overflow: auto;
+}
+
+.upload-detail li {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+
+.upload-detail-muted {
+  color: var(--muted);
+}
+
 .upload-progress-bar {
   height: 8px;
   overflow: hidden;

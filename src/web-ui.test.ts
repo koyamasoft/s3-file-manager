@@ -11,7 +11,12 @@ const objects = [
   { key: "images/logo.png", size: 2048, sizeLabel: "2.0 KiB", lastModified: "2026-05-24T00:02:00.000Z" },
 ];
 
-async function loadWebApp() {
+type LoadWebAppOptions = {
+  fetchHandler?: (url: URL, init?: RequestInit) => Response | Promise<Response> | null | undefined;
+  confirmResponses?: boolean[];
+};
+
+async function loadWebApp(options: LoadWebAppOptions = {}) {
   const root = process.cwd();
   const html = readFileSync(join(root, "src/web/index.html"), "utf8");
   const dom = new JSDOM(html, {
@@ -23,8 +28,11 @@ async function loadWebApp() {
   Object.assign(globalThis, {
     document: dom.window.document,
     window: dom.window,
-    fetch: async (input: string | URL) => {
+    fetch: async (input: string | URL, init?: RequestInit) => {
       const url = new URL(String(input), dom.window.location.href);
+      const handled = await options.fetchHandler?.(url, init);
+      if (handled) return handled;
+
       if (url.pathname === "/api/config") {
         return jsonResponse({
           bucket: "my-bucket",
@@ -76,7 +84,7 @@ async function loadWebApp() {
       },
     },
   });
-  dom.window.confirm = () => true;
+  dom.window.confirm = () => options.confirmResponses?.shift() ?? true;
 
   const appUrl = `${pathToFileURL(join(root, "src/web/app.js")).href}?t=${Date.now()}-${Math.random()}`;
   await import(appUrl);
@@ -84,9 +92,9 @@ async function loadWebApp() {
   return { dom, copied };
 }
 
-function jsonResponse(body: unknown): Response {
+function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
-    status: 200,
+    status,
     headers: { "Content-Type": "application/json" },
   });
 }
@@ -147,4 +155,49 @@ test("Web UI copies selected object key, S3 URI, and download URL", async () => 
     "s3://my-bucket/report.txt",
     "http://127.0.0.1:5174/api/download?bucket=my-bucket&key=report.txt",
   ]);
+});
+
+test("Web UI shows upload conflict and failure details", async () => {
+  const { dom } = await loadWebApp({
+    confirmResponses: [true, false],
+    fetchHandler: (url) => {
+      if (url.pathname !== "/api/upload") return null;
+
+      const key = url.searchParams.get("key");
+      if (key === "ok.txt") {
+        return jsonResponse({
+          metadata: {
+            key,
+            etag: "\"ok\"",
+            contentType: "text/plain; charset=utf-8",
+            contentLength: 2,
+            lastModified: "2026-05-24T00:03:00.000Z",
+          },
+        });
+      }
+      if (key === "exists.txt") {
+        return jsonResponse({ error: "Object already exists." }, 409);
+      }
+      return jsonResponse({ error: "broken upload" }, 500);
+    },
+  });
+  const input = dom.window.document.querySelector<HTMLInputElement>("#uploadFileInput");
+  assert.ok(input);
+
+  Object.defineProperty(input, "files", {
+    configurable: true,
+    value: [
+      new dom.window.File(["ok"], "ok.txt", { type: "text/plain" }),
+      new dom.window.File(["exists"], "exists.txt", { type: "text/plain" }),
+      new dom.window.File(["ng"], "ng.txt", { type: "text/plain" }),
+    ],
+  });
+  input.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+
+  await waitFor(() => dom.window.document.querySelector("#uploadProgress")?.textContent?.includes("失敗 1") ?? false);
+
+  const progressText = dom.window.document.querySelector("#uploadProgress")?.textContent ?? "";
+  assert.match(progressText, /詳細 2件/);
+  assert.match(progressText, /衝突: exists\.txt/);
+  assert.match(progressText, /失敗: ng\.txt \(broken upload\)/);
 });

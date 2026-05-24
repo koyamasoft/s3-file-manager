@@ -19,6 +19,8 @@ const state = {
   allowWrite: false,
   allowCreateBucket: false,
   wideEditor: false,
+  dragDepth: 0,
+  uploadProgress: null,
 };
 
 const elements = {
@@ -49,12 +51,16 @@ const elements = {
   writeModeButton: document.querySelector("#writeModeButton"),
   wideEditorButton: document.querySelector("#wideEditorButton"),
   toggleEnvModeButton: document.querySelector("#toggleEnvModeButton"),
+  copyKeyButton: document.querySelector("#copyKeyButton"),
+  copyS3UriButton: document.querySelector("#copyS3UriButton"),
+  copyDownloadUrlButton: document.querySelector("#copyDownloadUrlButton"),
   downloadButton: document.querySelector("#downloadButton"),
   saveButton: document.querySelector("#saveButton"),
   diffButton: document.querySelector("#diffButton"),
   diffPane: document.querySelector("#diffPane"),
   diffOutput: document.querySelector("#diffOutput"),
   closeDiffButton: document.querySelector("#closeDiffButton"),
+  uploadProgress: document.querySelector("#uploadProgress"),
   toast: document.querySelector("#toast"),
   metaBucket: document.querySelector("#metaBucket"),
   contentTypeSelect: document.querySelector("#contentTypeSelect"),
@@ -119,17 +125,46 @@ function updateDownloadButton() {
     elements.downloadButton.classList.add("hidden");
     elements.downloadButton.removeAttribute("href");
     elements.downloadButton.removeAttribute("download");
+    elements.copyDownloadUrlButton.disabled = true;
+  } else {
+    const params = new URLSearchParams({
+      bucket: state.selectedBucket,
+      key: state.selectedKey,
+    });
+    const name = state.selectedKey.split("/").filter(Boolean).pop() || "object";
+    elements.downloadButton.href = `/api/download?${params.toString()}`;
+    elements.downloadButton.download = name;
+    elements.downloadButton.classList.remove("hidden");
+    elements.copyDownloadUrlButton.disabled = false;
+  }
+
+  const hasObjectKey = !!state.selectedBucket && !!state.selectedKey;
+  elements.copyKeyButton.disabled = !hasObjectKey;
+  elements.copyS3UriButton.disabled = !hasObjectKey;
+}
+
+function renderUploadProgress() {
+  const progress = state.uploadProgress;
+  if (!progress) {
+    elements.uploadProgress.classList.add("hidden");
+    elements.uploadProgress.replaceChildren();
     return;
   }
 
-  const params = new URLSearchParams({
-    bucket: state.selectedBucket,
-    key: state.selectedKey,
-  });
-  const name = state.selectedKey.split("/").filter(Boolean).pop() || "object";
-  elements.downloadButton.href = `/api/download?${params.toString()}`;
-  elements.downloadButton.download = name;
-  elements.downloadButton.classList.remove("hidden");
+  const count = document.createElement("span");
+  count.textContent = `アップロード ${progress.done}/${progress.total}`;
+
+  const detail = document.createElement("span");
+  detail.textContent = `成功 ${progress.uploaded} / 衝突 ${progress.conflicts} / 失敗 ${progress.failures}`;
+
+  const bar = document.createElement("div");
+  bar.className = "upload-progress-bar";
+  const value = document.createElement("span");
+  value.style.width = `${progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0}%`;
+  bar.append(value);
+
+  elements.uploadProgress.replaceChildren(count, detail, bar);
+  elements.uploadProgress.classList.remove("hidden");
 }
 
 function updateWriteControls() {
@@ -891,6 +926,41 @@ function initialUploadKey(file) {
   return normalizeNewKey(file.name || "upload.bin", currentPrefix());
 }
 
+function uploadTargetLabel() {
+  const prefix = currentPrefix();
+  return prefix || "(root)";
+}
+
+function makeDownloadUrl(key) {
+  const params = new URLSearchParams({
+    bucket: state.selectedBucket,
+    key,
+  });
+  return `${window.location.origin}/api/download?${params.toString()}`;
+}
+
+async function copyText(value, label) {
+  if (!value) return;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+    } else {
+      const textarea = document.createElement("textarea");
+      textarea.value = value;
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "fixed";
+      textarea.style.left = "-9999px";
+      document.body.append(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
+    }
+    showToast(`${label}をコピーしました。`);
+  } catch (error) {
+    showToast(`${label}をコピーできませんでした: ${error.message}`, "error");
+  }
+}
+
 async function uploadFileToKey(file, targetKey, { force = false } = {}) {
   const params = new URLSearchParams({
     bucket: state.selectedBucket,
@@ -954,7 +1024,20 @@ async function uploadLocalFile(file, force = false, key = null) {
   }
 }
 
-async function uploadMultipleFiles(files) {
+function updateUploadProgress(values) {
+  state.uploadProgress = { ...state.uploadProgress, ...values };
+  renderUploadProgress();
+}
+
+function finishUploadProgress(delay = 3200) {
+  window.clearTimeout(finishUploadProgress.timer);
+  finishUploadProgress.timer = window.setTimeout(() => {
+    state.uploadProgress = null;
+    renderUploadProgress();
+  }, delay);
+}
+
+async function uploadMultipleFiles(files, { direct = false } = {}) {
   if (!state.allowWrite) {
     showToast("読み取り専用です。画面右上の「保存 OFF」から保存を有効にしてください。", "error");
     return;
@@ -964,40 +1047,64 @@ async function uploadMultipleFiles(files) {
     return;
   }
   if (files.length === 0) return;
-  if (files.length === 1) {
+  if (files.length === 1 && !direct) {
     await uploadLocalFile(files[0]);
     return;
   }
 
-  const prefix = currentPrefix();
   const targetKeys = files.map((file) => initialUploadKey(file));
-  if (!window.confirm(`${files.length}件のファイルを ${prefix || "(root)"} にアップロードしますか？`)) return;
+  const confirmMessage = files.length === 1
+    ? `${targetKeys[0]} にアップロードしますか？`
+    : `${files.length}件のファイルを ${uploadTargetLabel()} にアップロードしますか？`;
+  if (!window.confirm(confirmMessage)) return;
 
   const uploaded = [];
   const conflicts = [];
   const failures = [];
+  state.uploadProgress = {
+    total: files.length,
+    done: 0,
+    uploaded: 0,
+    conflicts: 0,
+    failures: 0,
+  };
+  renderUploadProgress();
 
   for (const [index, file] of files.entries()) {
     const targetKey = targetKeys[index];
     try {
       const metadata = await uploadFileToKey(file, targetKey);
       uploaded.push({ file, key: targetKey, metadata });
+      updateUploadProgress({ uploaded: uploaded.length });
     } catch (error) {
       if (error.status === 409) {
         conflicts.push({ file, key: targetKey });
+        updateUploadProgress({ conflicts: conflicts.length });
       } else {
         failures.push({ file, key: targetKey, error });
+        updateUploadProgress({ failures: failures.length });
       }
+    } finally {
+      updateUploadProgress({ done: index + 1 });
     }
   }
 
   if (conflicts.length > 0 && window.confirm(`${conflicts.length}件は同じキーが既にあります。衝突分だけ上書きしますか？`)) {
-    for (const item of conflicts.splice(0)) {
+    const overwriteTargets = conflicts.splice(0);
+    updateUploadProgress({
+      total: files.length + overwriteTargets.length,
+      conflicts: conflicts.length,
+    });
+    for (const item of overwriteTargets) {
       try {
         const metadata = await uploadFileToKey(item.file, item.key, { force: true });
         uploaded.push({ ...item, metadata });
+        updateUploadProgress({ uploaded: uploaded.length });
       } catch (error) {
         failures.push({ ...item, error });
+        updateUploadProgress({ failures: failures.length });
+      } finally {
+        updateUploadProgress({ done: state.uploadProgress.done + 1 });
       }
     }
   }
@@ -1006,6 +1113,7 @@ async function uploadMultipleFiles(files) {
   const skipped = conflicts.length;
   const message = `アップロード完了: 成功 ${uploaded.length}件 / 衝突スキップ ${skipped}件 / 失敗 ${failures.length}件`;
   showToast(message, failures.length > 0 ? "error" : "info");
+  finishUploadProgress();
   if (uploaded.length > 0) {
     const last = uploaded[uploaded.length - 1];
     await openUploadedObject(last.key, last.metadata, last.file);
@@ -1141,6 +1249,18 @@ async function setWriteMode(allowWrite) {
   showToast(state.allowWrite ? "保存を有効にしました。" : "読み取り専用に切り替えました。");
 }
 
+function dataTransferHasFiles(event) {
+  return [...(event.dataTransfer?.types ?? [])].includes("Files");
+}
+
+function droppedFiles(event) {
+  return [...(event.dataTransfer?.files ?? [])].filter((file) => file.size > 0 || file.name);
+}
+
+function setDragActive(active) {
+  document.body.classList.toggle("drag-upload-active", active);
+}
+
 async function boot() {
   try {
     await loadConfig();
@@ -1242,6 +1362,20 @@ elements.loadMoreButton.addEventListener("click", async () => {
   }
 });
 
+elements.copyKeyButton.addEventListener("click", () => {
+  copyText(state.selectedKey, "key");
+});
+
+elements.copyS3UriButton.addEventListener("click", () => {
+  if (!state.selectedBucket || !state.selectedKey) return;
+  copyText(`s3://${state.selectedBucket}/${state.selectedKey}`, "S3 URI");
+});
+
+elements.copyDownloadUrlButton.addEventListener("click", () => {
+  if (!state.selectedKey || state.isNew) return;
+  copyText(makeDownloadUrl(state.selectedKey), "download URL");
+});
+
 elements.newButton.addEventListener("click", createNewObject);
 elements.uploadFileButton.addEventListener("click", () => {
   if (!state.allowWrite) {
@@ -1258,6 +1392,44 @@ elements.uploadFileInput.addEventListener("change", () => {
   const files = [...(elements.uploadFileInput.files ?? [])];
   elements.uploadFileInput.value = "";
   uploadMultipleFiles(files).catch((error) => showToast(error.message, "error"));
+});
+
+document.addEventListener("dragenter", (event) => {
+  if (!dataTransferHasFiles(event)) return;
+  event.preventDefault();
+  state.dragDepth += 1;
+  setDragActive(true);
+});
+
+document.addEventListener("dragover", (event) => {
+  if (!dataTransferHasFiles(event)) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = state.allowWrite && state.selectedBucket ? "copy" : "none";
+});
+
+document.addEventListener("dragleave", (event) => {
+  if (!dataTransferHasFiles(event)) return;
+  state.dragDepth = Math.max(0, state.dragDepth - 1);
+  if (state.dragDepth === 0) setDragActive(false);
+});
+
+document.addEventListener("drop", (event) => {
+  if (!dataTransferHasFiles(event)) return;
+  event.preventDefault();
+  state.dragDepth = 0;
+  setDragActive(false);
+
+  if (!state.allowWrite) {
+    showToast("読み取り専用です。画面右上の「保存 OFF」から保存を有効にしてください。", "error");
+    return;
+  }
+  if (!state.selectedBucket) {
+    showToast("バケットを選択してください。", "error");
+    return;
+  }
+
+  const files = droppedFiles(event);
+  uploadMultipleFiles(files, { direct: true }).catch((error) => showToast(error.message, "error"));
 });
 elements.newBucketButton.addEventListener("click", async () => {
   try {

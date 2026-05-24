@@ -61,6 +61,9 @@
             <button id="writeModeButton" class="mode-toggle" type="button">保存 OFF</button>
             <button id="wideEditorButton" class="mode-toggle" type="button">拡大</button>
             <button id="toggleEnvModeButton" type="button" disabled>テキスト編集</button>
+            <button id="copyKeyButton" type="button" disabled>keyコピー</button>
+            <button id="copyS3UriButton" type="button" disabled>S3 URIコピー</button>
+            <button id="copyDownloadUrlButton" type="button" disabled>URLコピー</button>
             <a id="downloadButton" class="button-link hidden" href="#" download>ダウンロード</a>
             <button id="diffButton" type="button" disabled>差分</button>
             <button id="saveButton" type="button" disabled>アップロード</button>
@@ -68,6 +71,7 @@
         </section>
 
         <section id="warningBanner" class="warning hidden"></section>
+        <section id="uploadProgress" class="upload-progress hidden" aria-live="polite"></section>
 
         <section class="content-grid">
           <div class="editor-pane">

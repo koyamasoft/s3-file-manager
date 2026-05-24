@@ -14,7 +14,8 @@ AWS 認証情報はブラウザに渡しません。localhost の Node.js サー
 - オブジェクト一覧、メタデータ確認、画像/PDFプレビュー
 - Web UI からのオブジェクトダウンロード
 - テキストファイルの表示・編集・Content-Type変更・差分確認・アップロード
-- ローカルファイルの単体/複数アップロード
+- ローカルファイルの単体/複数アップロード、ドラッグ&ドロップアップロード
+- key / S3 URI / download URL のコピー
 - `.env`, `.env.local`, `*.env` の key/value 編集
 - CLI での `list`, `head`, `get`, `show`, `diff`, `edit`, `put`
 - 認証期限切れ時の S3 クライアント再作成と1回リトライ
@@ -106,10 +107,13 @@ Web UI でできること:
 | 新規ファイル作成 | 保存ONの時に、現在の Prefix をもとにテキストファイルを作成します |
 | ローカルファイルアップロード | 保存ONの時に、ローカルファイルを現在の Prefix 配下へアップロードします |
 | 複数ファイルアップロード | 複数選択したファイルを直列にアップロードし、既存キー衝突時は上書き確認します |
+| ドラッグ&ドロップアップロード | ファイルを画面にドロップして現在の Prefix 配下へアップロードします |
+| アップロード進捗 | 複数ファイルアップロード中の成功、衝突、失敗件数を表示します |
 | テキスト編集 | JSON、CSV、Markdown、YAML などをブラウザ上で編集します |
 | env編集 | `.env`, `.env.local`, `*.env` を key/value テーブルまたは通常テキストとして編集します |
 | 差分確認 | 開いた時点の内容と現在の編集内容を比較します |
 | 画像/PDFプレビュー | JPEG、PNG、WebP、GIF、PDF を表示します |
+| コピー | 選択中オブジェクトの key、S3 URI、download URL をコピーします |
 | バケット作成 | `--allow-create-bucket` 指定時のみバケットを作成します |
 
 ## CLI
@@ -324,6 +328,14 @@ npm test
 ```bash
 npm run web -- --bucket your-bucket-name
 ```
+
+`Your session has expired. Please reauthenticate.` が出る場合は、AWS CLI などで認証を更新してください。
+
+```bash
+aws sts get-caller-identity
+```
+
+認証更新後も Web UI でバケットが見えない場合は、起動中の S3 File Manager が古い認証状態を保持している可能性があります。Web サーバーを再起動してください。
 
 ### AccessDenied が出る
 

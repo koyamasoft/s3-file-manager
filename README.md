@@ -1,5 +1,8 @@
 # S3 File Manager
 
+[![Test](https://github.com/koyamasoft/s3-file-manager/actions/workflows/test.yml/badge.svg)](https://github.com/koyamasoft/s3-file-manager/actions/workflows/test.yml)
+[![Release](https://img.shields.io/github/v/release/koyamasoft/s3-file-manager)](https://github.com/koyamasoft/s3-file-manager/releases)
+
 S3 / MinIO / MiniStack などの S3 互換ストレージを、安全に確認・編集するためのローカル専用 Web UI / CLI ツールです。
 
 AWS 認証情報はブラウザに渡しません。localhost の Node.js サーバーが AWS SDK 経由で S3 にアクセスします。Web UI は `127.0.0.1` のみで待ち受け、起動直後は保存OFFです。

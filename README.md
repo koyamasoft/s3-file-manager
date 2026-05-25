@@ -332,20 +332,21 @@ npm test
 
 `npm test` は TypeScript をビルドしてから、Node.js 標準のテストランナーでユニットテストを実行します。
 
-## リリースと公開
+## リリース時の確認
 
-public リポジトリとして公開する場合は、公開前に以下を確認してください。
+リリースや公開設定を変更する前に、以下を確認してください。
 
 - `npm test` が通ること
 - `.env`, `.env.local`, `.s3-work/`, `dist/`, `node_modules/` をコミットしていないこと
 - README、Issue、PR、スクリーンショットに実バケット名、アカウントID、社内パスが残っていないこと
 - 書き込み系機能は必要最小限の IAM 権限で試すこと
+- GitHub Actions と Dependabot alerts / security updates が有効であること
 
 安定版の区切りは Git タグで管理します。
 
 ```bash
-git tag -a v0.1.0 -m "v0.1.0"
-git push origin v0.1.0
+git tag -a vX.Y.Z -m "vX.Y.Z"
+git push origin vX.Y.Z
 ```
 
 ## トラブルシュート

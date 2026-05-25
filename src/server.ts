@@ -317,6 +317,14 @@ export function createRequestHandler({
   const deps: ServerDependencies = { ...defaultDependencies, ...dependencies };
   let client = deps.createS3Client(config);
   let credentialRefreshes = 0;
+  let clientResets = 0;
+
+  function resetS3Client(): void {
+    client.destroy();
+    deps.refreshAwsCredentialEnv(options.envFile);
+    client = deps.createS3Client(config);
+    clientResets += 1;
+  }
 
   async function withFreshS3<T>(operation: () => Promise<T>): Promise<T> {
     try {
@@ -325,9 +333,7 @@ export function createRequestHandler({
       if (!isCredentialError(error)) throw error;
 
       credentialRefreshes += 1;
-      client.destroy();
-      deps.refreshAwsCredentialEnv(options.envFile);
-      client = deps.createS3Client(config);
+      resetS3Client();
       deps.warn(`AWS credentials were refreshed. Retry count: ${credentialRefreshes}`);
       try {
         return await operation();
@@ -365,6 +371,7 @@ export function createRequestHandler({
       }
 
       if (requestUrl.pathname === "/api/config") {
+        resetS3Client();
         sendJson(response, 200, {
           bucket: config.bucket ?? null,
           region: config.region,
@@ -374,6 +381,7 @@ export function createRequestHandler({
           allowWrite: options.allowWrite,
           allowCreateBucket: options.allowCreateBucket,
           credentialRefreshes,
+          clientResets,
           csrfToken,
         });
         return;

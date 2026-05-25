@@ -194,6 +194,43 @@ test("server parses Web UI startup options", () => {
   );
 });
 
+test("server recreates the S3 client when the Web UI config is loaded", async () => {
+  const options = baseOptions();
+  let clients = 0;
+  let destroys = 0;
+  let refreshes = 0;
+  const { server, port } = await startTestServer(options, {
+    options,
+    config: baseConfig,
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => {
+        clients += 1;
+        return {
+          destroy() {
+            destroys += 1;
+          },
+        } as never;
+      },
+      refreshAwsCredentialEnv: () => {
+        refreshes += 1;
+      },
+    },
+  });
+
+  try {
+    const response = await requestJson(port, "/api/config");
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.json.clientResets, 1);
+    assert.equal(clients, 2);
+    assert.equal(destroys, 1);
+    assert.equal(refreshes, 1);
+  } finally {
+    await closeServer(server);
+  }
+});
+
 test("server requires CSRF token for write-mode changes", async () => {
   const options = baseOptions();
   const { server, port } = await startTestServer(options, {

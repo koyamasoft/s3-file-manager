@@ -326,6 +326,12 @@ Web UI は画面リロード時にも S3 クライアントを作り直します
 
 `.env` の一時認証情報を手で書き換えた場合も、リロード時に env ファイルの AWS 認証関連キーを読み直します。シェルの `export` だけを更新した場合は、起動中の Node.js プロセスには反映されないため、Web サーバーを再起動してください。
 
+```bash
+lsof -ti tcp:5174
+kill <PID>
+npm run web -- --allow-write --allow-create-bucket
+```
+
 ## テスト
 
 ```bash

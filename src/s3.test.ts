@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { copyObject, createS3Client, listObjects } from "./s3.js";
+import { bucketRegionFromError, copyObject, createS3Client, listObjects } from "./s3.js";
 
 test("createS3Client follows AWS S3 region redirects for buckets in other regions", () => {
   const client = createS3Client({
@@ -25,6 +25,22 @@ test("createS3Client does not enable region redirects for custom endpoints", () 
 
   assert.equal(client.config.followRegionRedirects, false);
   client.destroy();
+});
+
+test("bucketRegionFromError extracts the redirect bucket region", () => {
+  assert.equal(bucketRegionFromError({
+    name: "PermanentRedirect",
+    $metadata: {
+      httpHeaders: {
+        "x-amz-bucket-region": "us-west-2",
+      },
+    },
+  }), "us-west-2");
+
+  assert.equal(bucketRegionFromError({
+    name: "AuthorizationHeaderMalformed",
+    Region: "eu-west-1",
+  }), "eu-west-1");
 });
 
 test("listObjects stops at the requested limit and reports truncation", async () => {

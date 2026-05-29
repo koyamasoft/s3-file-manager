@@ -499,7 +499,22 @@ test("Web UI resizes and stores the env key column width", async () => {
 });
 
 test("Web UI filters the loaded object list locally", async () => {
-  const { dom } = await loadWebApp();
+  const { dom } = await loadWebApp({
+    fetchHandler: (url) => {
+      if (url.pathname === "/api/list") {
+        return jsonResponse({
+          isTruncated: false,
+          nextContinuationToken: null,
+          limit: 1000,
+          objects: [
+            ...objects,
+            { key: "images/icons/logo-small.png", size: 512, sizeLabel: "512 B", lastModified: "2026-05-24T00:03:00.000Z" },
+          ],
+        });
+      }
+      return null;
+    },
+  });
   const input = dom.window.document.querySelector<HTMLInputElement>("#objectFilterInput");
   assert.ok(input);
 
@@ -516,8 +531,21 @@ test("Web UI filters the loaded object list locally", async () => {
   const rows = [...dom.window.document.querySelectorAll<HTMLButtonElement>("#objectList .object-open-button")];
   assert.equal(dom.window.document.querySelector("#objectCount")?.textContent, "1/3");
   assert.equal(rows.length, 1);
-  assert.match(rows[0]?.textContent ?? "", /images\/logo\.png/);
-  assert.doesNotMatch(rows[0]?.className ?? "", /prefix-folder/);
+  assert.match(rows[0]?.textContent ?? "", /images\//);
+  assert.match(rows[0]?.className ?? "", /prefix-folder/);
+
+  rows[0]?.click();
+  await waitFor(() => dom.window.document.querySelector("#objectList")?.textContent?.includes("logo.png") ?? false);
+
+  input.value = "small";
+  input.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+
+  const childRows = [...dom.window.document.querySelectorAll<HTMLButtonElement>("#objectList .object-open-button")];
+  assert.equal(dom.window.document.querySelector("#objectCount")?.textContent, "1/2");
+  assert.equal(childRows.length, 2);
+  assert.match(childRows[1]?.textContent ?? "", /icons\//);
+  assert.match(childRows[1]?.className ?? "", /prefix-folder/);
+  assert.doesNotMatch(childRows[1]?.textContent ?? "", /logo-small\.png/);
 });
 
 test("Web UI previews PDFs through /api/raw iframe", async () => {

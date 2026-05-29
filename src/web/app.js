@@ -552,17 +552,14 @@ function currentObjectFilter() {
 
 function visibleObjectRows() {
   const prefix = currentPrefix();
-  const query = currentObjectFilter();
   return state.objects.filter((object) => {
     if (object.key === prefix) return false;
     if (!object.key.startsWith(prefix)) return false;
-    if (!query) return true;
-    return object.key.toLowerCase().includes(query);
+    return true;
   });
 }
 
-function childPrefixes() {
-  if (currentObjectFilter()) return [];
+function childPrefixes(query = currentObjectFilter()) {
   const prefix = currentPrefix();
   const names = new Set();
 
@@ -570,20 +567,23 @@ function childPrefixes() {
     const rest = object.key.slice(prefix.length);
     const slash = rest.indexOf("/");
     if (slash !== -1) {
-      names.add(`${prefix}${rest.slice(0, slash + 1)}`);
+      const childPrefix = `${prefix}${rest.slice(0, slash + 1)}`;
+      if (!query || childPrefix.toLowerCase().includes(query) || object.key.toLowerCase().includes(query)) {
+        names.add(childPrefix);
+      }
     }
   }
 
   return [...names].sort((a, b) => a.localeCompare(b));
 }
 
-function directObjects() {
+function directObjects(query = currentObjectFilter()) {
   const prefix = currentPrefix();
-  const query = currentObjectFilter();
-  const folders = new Set(childPrefixes());
+  const folders = new Set(childPrefixes(query));
   return visibleObjectRows().filter((object) => {
     const rest = object.key.slice(prefix.length);
-    if (query) return !!rest;
+    if (rest.includes("/")) return false;
+    if (query && !object.key.toLowerCase().includes(query)) return false;
     return !rest.includes("/") && !folders.has(object.key);
   });
 }
@@ -654,13 +654,10 @@ function appendObjectButton({ className = "", label, meta, active = false, favor
 }
 
 function visibleObjectCountWithoutFilter() {
-  const previousValue = elements.objectFilterInput.value;
-  elements.objectFilterInput.value = "";
-  const folders = childPrefixes();
-  const objects = directObjects();
+  const folders = childPrefixes("");
+  const objects = directObjects("");
   const directKeys = new Set(objects.map((object) => object.key));
   const pinnedFavorites = favoriteObjectsInCurrentPrefix(directKeys, "");
-  elements.objectFilterInput.value = previousValue;
   return objects.length + folders.length + pinnedFavorites.length;
 }
 
@@ -668,9 +665,9 @@ function renderObjectList() {
   const folders = childPrefixes();
   const objects = directObjects();
   const directKeys = new Set(objects.map((object) => object.key));
-  const pinnedFavorites = favoriteObjectsInCurrentPrefix(directKeys);
-  const count = objects.length + folders.length + pinnedFavorites.length;
   const filter = currentObjectFilter();
+  const pinnedFavorites = filter ? [] : favoriteObjectsInCurrentPrefix(directKeys);
+  const count = objects.length + folders.length + pinnedFavorites.length;
   const suffix = state.listTruncated ? "+" : "";
   elements.objectCount.textContent = filter ? `${count}/${visibleObjectCountWithoutFilter()}${suffix}` : `${count}${suffix}`;
   elements.objectList.replaceChildren();

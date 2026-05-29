@@ -333,6 +333,35 @@ test("Web UI pins favorite objects from deeper prefixes", async () => {
   assert.match(firstRow?.textContent ?? "", /images\/logo\.png/);
 });
 
+test("Web UI lists favorites and removes them from the manager", async () => {
+  const { dom } = await loadWebApp();
+
+  const bucketInput = dom.window.document.querySelector<HTMLInputElement>("#bucketSearchInput");
+  assert.ok(bucketInput);
+  bucketInput.dispatchEvent(new dom.window.Event("focus", { bubbles: true }));
+  const bucketRow = dom.window.document.querySelector<HTMLElement>("#bucketSuggestions .bucket-suggestion-row");
+  assert.ok(bucketRow);
+  bucketRow.querySelector<HTMLButtonElement>(".favorite-button")?.click();
+
+  const reportRow = [...dom.window.document.querySelectorAll<HTMLElement>("#objectList .favorite-row")]
+    .find((row) => row.textContent?.includes("report.txt"));
+  assert.ok(reportRow);
+  reportRow.querySelector<HTMLButtonElement>(".favorite-button")?.click();
+
+  await waitFor(() => dom.window.document.querySelector("#favoriteList")?.textContent?.includes("report.txt") ?? false);
+
+  const favoriteList = dom.window.document.querySelector("#favoriteList");
+  assert.match(favoriteList?.textContent ?? "", /my-bucket/);
+  assert.match(favoriteList?.textContent ?? "", /report\.txt/);
+
+  const removeButtons = [...dom.window.document.querySelectorAll<HTMLButtonElement>("#favoriteList .favorite-list-remove")];
+  assert.equal(removeButtons.length, 2);
+  removeButtons[1]?.click();
+
+  assert.doesNotMatch(dom.window.document.querySelector("#favoriteList")?.textContent ?? "", /report\.txt/);
+  assert.deepEqual(JSON.parse(dom.window.localStorage.getItem("s3fm.favoriteObjects") ?? "{}"), {});
+});
+
 test("Web UI filters the loaded object list locally", async () => {
   const { dom } = await loadWebApp();
   const input = dom.window.document.querySelector<HTMLInputElement>("#objectFilterInput");

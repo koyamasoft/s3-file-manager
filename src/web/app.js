@@ -42,6 +42,7 @@ const elements = {
   objectList: document.querySelector("#objectList"),
   loadMoreRow: document.querySelector("#loadMoreRow"),
   loadMoreButton: document.querySelector("#loadMoreButton"),
+  favoriteList: document.querySelector("#favoriteList"),
   selectedKey: document.querySelector("#selectedKey"),
   modeBadge: document.querySelector("#modeBadge"),
   warningBanner: document.querySelector("#warningBanner"),
@@ -133,6 +134,7 @@ function writeJsonStorage(key, value) {
 function loadFavorites() {
   state.favoriteBuckets = new Set(readJsonStorage("s3fm.favoriteBuckets", []));
   state.favoriteObjects = readJsonStorage("s3fm.favoriteObjects", {});
+  renderFavoriteList();
 }
 
 function saveFavoriteBuckets() {
@@ -181,6 +183,7 @@ function toggleFavoriteBucket(bucket) {
   }
   saveFavoriteBuckets();
   renderBucketSuggestions(!elements.bucketSuggestions.classList.contains("hidden"));
+  renderFavoriteList();
 }
 
 function toggleFavoriteObject(key) {
@@ -194,6 +197,124 @@ function toggleFavoriteObject(key) {
   }
   saveFavoriteObjects(state.selectedBucket, favorites);
   renderObjectList();
+  renderFavoriteList();
+}
+
+function removeFavoriteObject(bucket, key) {
+  const favorites = favoriteObjectSet(bucket);
+  favorites.delete(key);
+  saveFavoriteObjects(bucket, favorites);
+  renderFavoriteList();
+  renderObjectList();
+  showToast(`お気に入りから外しました: ${key}`);
+}
+
+function appendFavoriteListSection(title, items) {
+  const section = document.createElement("section");
+  section.className = "favorite-list-section";
+
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  section.append(heading);
+
+  if (items.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "favorite-list-empty";
+    empty.textContent = "なし";
+    section.append(empty);
+  } else {
+    const list = document.createElement("ul");
+    for (const item of items) {
+      list.append(item);
+    }
+    section.append(list);
+  }
+
+  elements.favoriteList.append(section);
+}
+
+function favoriteListItem({ label, meta, onOpen, onRemove }) {
+  const item = document.createElement("li");
+
+  const open = document.createElement("button");
+  open.type = "button";
+  open.className = "favorite-list-open";
+  open.addEventListener("click", onOpen);
+
+  const name = document.createElement("span");
+  name.className = "favorite-list-name";
+  name.textContent = label;
+
+  const detail = document.createElement("span");
+  detail.className = "favorite-list-meta";
+  detail.textContent = meta;
+
+  open.append(name, detail);
+
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "favorite-list-remove";
+  remove.title = "お気に入りから削除";
+  remove.setAttribute("aria-label", `${label} をお気に入りから削除`);
+  remove.textContent = "×";
+  remove.addEventListener("click", onRemove);
+
+  item.append(open, remove);
+  return item;
+}
+
+function renderFavoriteList() {
+  if (!elements.favoriteList) return;
+  elements.favoriteList.replaceChildren();
+
+  const bucketItems = [...state.favoriteBuckets].sort((a, b) => a.localeCompare(b)).map((bucket) =>
+    favoriteListItem({
+      label: bucket,
+      meta: "Bucket",
+      onOpen: () => {
+        selectBucket(bucket);
+      },
+      onRemove: () => {
+        state.favoriteBuckets.delete(bucket);
+        saveFavoriteBuckets();
+        renderFavoriteList();
+        renderBucketSuggestions(!elements.bucketSuggestions.classList.contains("hidden"));
+        showToast(`お気に入りから外しました: ${bucket}`);
+      },
+    })
+  );
+
+  const objectItems = Object.entries(state.favoriteObjects)
+    .flatMap(([bucket, keys]) => (Array.isArray(keys) ? keys : []).map((key) => ({ bucket, key })))
+    .sort((a, b) => a.bucket.localeCompare(b.bucket) || a.key.localeCompare(b.key))
+    .map(({ bucket, key }) =>
+      favoriteListItem({
+        label: key,
+        meta: bucket,
+        onOpen: async () => {
+          if (state.selectedBucket !== bucket) {
+            state.selectedBucket = bucket;
+            elements.bucketSearchInput.value = bucket;
+            elements.prefixInput.value = parentPrefix(key);
+            elements.objectFilterInput.value = "";
+            renderBucketSuggestions(false);
+            renderPrefixSuggestions(false);
+            updateConnectionLabel();
+            clearSelection();
+            await loadObjects();
+          } else {
+            elements.prefixInput.value = parentPrefix(key);
+            elements.objectFilterInput.value = "";
+            await loadObjects();
+          }
+          await openObject(key);
+        },
+        onRemove: () => removeFavoriteObject(bucket, key),
+      })
+    );
+
+  appendFavoriteListSection("Buckets", bucketItems);
+  appendFavoriteListSection("Objects", objectItems);
 }
 
 function updateConnectionLabel() {

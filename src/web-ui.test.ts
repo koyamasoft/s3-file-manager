@@ -112,6 +112,10 @@ async function waitFor(check: () => boolean): Promise<void> {
   assert.fail("Timed out waiting for Web UI state.");
 }
 
+function toastMessage(dom: JSDOM): string | null {
+  return dom.window.document.querySelector(".toast-message")?.textContent ?? null;
+}
+
 test("Web UI does not select the first bucket on initial load", async () => {
   let listRequests = 0;
   const { dom } = await loadWebApp({
@@ -145,11 +149,44 @@ test("Web UI does not select the first bucket on initial load", async () => {
     },
   });
 
-  await waitFor(() => dom.window.document.querySelector("#toast")?.textContent === "バケットを選択してください。");
+  await waitFor(() => toastMessage(dom) === "バケットを選択してください。");
 
   assert.equal(dom.window.document.querySelector("#connectionLabel")?.textContent, "バケット未選択 · AWS S3");
   assert.equal((dom.window.document.querySelector<HTMLInputElement>("#bucketSearchInput")?.value), "");
   assert.equal(listRequests, 0);
+});
+
+test("Web UI keeps error toasts open until another message replaces them", async () => {
+  const { dom } = await loadWebApp({
+    waitForObjects: false,
+    fetchHandler: (url) => {
+      if (url.pathname === "/api/config") {
+        return jsonResponse({
+          bucket: null,
+          region: "ap-northeast-1",
+          endpoint: null,
+          forcePathStyle: false,
+          isAwsS3: true,
+          allowWrite: true,
+          allowCreateBucket: false,
+          credentialRefreshes: 0,
+          csrfToken: "test-token",
+        });
+      }
+      return null;
+    },
+  });
+
+  const toast = dom.window.document.querySelector("#toast");
+  await waitFor(() => toastMessage(dom) === "バケットを選択してください。");
+  await new Promise((resolve) => setTimeout(resolve, 3400));
+
+  assert.equal(toastMessage(dom), "バケットを選択してください。");
+  assert.equal(toast?.classList.contains("hidden"), false);
+  assert.equal(toast?.classList.contains("error"), true);
+
+  dom.window.document.querySelector<HTMLButtonElement>(".toast-close")?.click();
+  assert.equal(toast?.classList.contains("hidden"), true);
 });
 
 test("Web UI shows all bucket suggestions when many buckets are available", async () => {
@@ -180,7 +217,7 @@ test("Web UI shows all bucket suggestions when many buckets are available", asyn
     },
   });
 
-  await waitFor(() => dom.window.document.querySelector("#toast")?.textContent === "バケットを選択してください。");
+  await waitFor(() => toastMessage(dom) === "バケットを選択してください。");
 
   const input = dom.window.document.querySelector<HTMLInputElement>("#bucketSearchInput");
   assert.ok(input);
@@ -220,7 +257,7 @@ test("Web UI stores favorite buckets and sorts them first", async () => {
     },
   });
 
-  await waitFor(() => dom.window.document.querySelector("#toast")?.textContent === "バケットを選択してください。");
+  await waitFor(() => toastMessage(dom) === "バケットを選択してください。");
 
   const input = dom.window.document.querySelector<HTMLInputElement>("#bucketSearchInput");
   assert.ok(input);

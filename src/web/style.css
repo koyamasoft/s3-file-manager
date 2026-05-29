@@ -848,6 +848,9 @@ pre {
   position: fixed;
   right: 20px;
   bottom: 20px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   max-width: min(420px, calc(100vw - 40px));
   border-radius: 8px;
   background: #17202a;
@@ -859,6 +862,31 @@ pre {
 
 .toast.error {
   background: var(--danger);
+}
+
+.toast-message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.toast-close {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 18%);
+  color: #fff;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.toast-close:hover {
+  background: rgb(255 255 255 / 28%);
 }
 
 .hidden {

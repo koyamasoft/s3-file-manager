@@ -83,10 +83,30 @@ function formatBytes(bytes) {
 }
 
 function showToast(message, type = "info") {
-  elements.toast.textContent = message;
+  elements.toast.textContent = "";
+  const messageElement = document.createElement("span");
+  messageElement.className = "toast-message";
+  messageElement.textContent = message;
+  elements.toast.append(messageElement);
+
+  if (type === "error") {
+    const closeButton = document.createElement("button");
+    closeButton.className = "toast-close";
+    closeButton.type = "button";
+    closeButton.setAttribute("aria-label", "通知を閉じる");
+    closeButton.textContent = "×";
+    closeButton.addEventListener("click", () => {
+      elements.toast.classList.add("hidden");
+    });
+    elements.toast.append(closeButton);
+  }
+
   elements.toast.classList.toggle("error", type === "error");
   elements.toast.classList.remove("hidden");
   window.clearTimeout(showToast.timer);
+  if (type === "error") {
+    return;
+  }
   showToast.timer = window.setTimeout(() => {
     elements.toast.classList.add("hidden");
   }, 3200);

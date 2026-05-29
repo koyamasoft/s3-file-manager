@@ -555,17 +555,18 @@ function visibleObjectRows() {
   const query = currentObjectFilter();
   return state.objects.filter((object) => {
     if (object.key === prefix) return false;
+    if (!object.key.startsWith(prefix)) return false;
     if (!query) return true;
     return object.key.toLowerCase().includes(query);
   });
 }
 
 function childPrefixes() {
+  if (currentObjectFilter()) return [];
   const prefix = currentPrefix();
   const names = new Set();
 
   for (const object of visibleObjectRows()) {
-    if (!object.key.startsWith(prefix)) continue;
     const rest = object.key.slice(prefix.length);
     const slash = rest.indexOf("/");
     if (slash !== -1) {
@@ -578,17 +579,17 @@ function childPrefixes() {
 
 function directObjects() {
   const prefix = currentPrefix();
+  const query = currentObjectFilter();
   const folders = new Set(childPrefixes());
   return visibleObjectRows().filter((object) => {
-    if (!object.key.startsWith(prefix)) return false;
     const rest = object.key.slice(prefix.length);
+    if (query) return !!rest;
     return !rest.includes("/") && !folders.has(object.key);
   });
 }
 
-function favoriteObjectsInCurrentPrefix(directKeys) {
+function favoriteObjectsInCurrentPrefix(directKeys, query = currentObjectFilter()) {
   const prefix = currentPrefix();
-  const query = currentObjectFilter();
   const loadedByKey = new Map(state.objects.map((object) => [object.key, object]));
 
   return [...favoriteObjectSet()]
@@ -652,6 +653,17 @@ function appendObjectButton({ className = "", label, meta, active = false, favor
   elements.objectList.append(item);
 }
 
+function visibleObjectCountWithoutFilter() {
+  const previousValue = elements.objectFilterInput.value;
+  elements.objectFilterInput.value = "";
+  const folders = childPrefixes();
+  const objects = directObjects();
+  const directKeys = new Set(objects.map((object) => object.key));
+  const pinnedFavorites = favoriteObjectsInCurrentPrefix(directKeys, "");
+  elements.objectFilterInput.value = previousValue;
+  return objects.length + folders.length + pinnedFavorites.length;
+}
+
 function renderObjectList() {
   const folders = childPrefixes();
   const objects = directObjects();
@@ -660,7 +672,7 @@ function renderObjectList() {
   const count = objects.length + folders.length + pinnedFavorites.length;
   const filter = currentObjectFilter();
   const suffix = state.listTruncated ? "+" : "";
-  elements.objectCount.textContent = filter ? `${count}/${state.objects.length}${suffix}` : `${count}${suffix}`;
+  elements.objectCount.textContent = filter ? `${count}/${visibleObjectCountWithoutFilter()}${suffix}` : `${count}${suffix}`;
   elements.objectList.replaceChildren();
 
   if (currentPrefix()) {

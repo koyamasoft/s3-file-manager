@@ -3,7 +3,7 @@
   <rect x="0.5" y="0.5" width="359" height="899" fill="#FFFFFF" stroke="#D8DEE8"/>
   <rect x="0.5" y="0.5" width="1439" height="88" fill="#FFFFFF" stroke="#D8DEE8"/>
   <text x="28" y="38" fill="#17202A" font-family="Arial, sans-serif" font-size="28" font-weight="700">S3 File Manager</text>
-  <text x="28" y="66" fill="#667085" font-family="Arial, sans-serif" font-size="15">example-assets-bucket · AWS S3</text>
+  <text x="28" y="66" fill="#667085" font-family="Arial, sans-serif" font-size="15">example-assets-bucket · AWS S3 · ap-northeast-1</text>
   <rect x="162" y="24" width="38" height="38" rx="7" fill="#126A5A"/>
   <text x="174" y="51" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="25">□</text>
   <rect x="210" y="24" width="38" height="38" rx="7" fill="#126A5A"/>
@@ -24,32 +24,36 @@
   <text x="42" y="267" fill="#8993A3" font-family="Arial, sans-serif" font-size="17">☆</text>
   <text x="70" y="267" fill="#17202A" font-family="Arial, sans-serif" font-size="14">my-local-bucket</text>
 
-  <text x="28" y="314" fill="#667085" font-family="Arial, sans-serif" font-size="13" font-weight="700">PREFIX</text>
-  <rect x="28.5" y="328.5" width="222" height="38" rx="7" fill="#FFFFFF" stroke="#D8DEE8"/>
-  <text x="42" y="353" fill="#17202A" font-family="Arial, sans-serif" font-size="15">logs/2026/</text>
-  <rect x="258" y="328" width="74" height="39" rx="7" fill="#126A5A"/>
-  <text x="282" y="353" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="15" font-weight="700">検索</text>
+  <text x="28" y="301" fill="#667085" font-family="Arial, sans-serif" font-size="13" font-weight="700">REGION</text>
+  <text x="91" y="301" fill="#667085" font-family="Arial, sans-serif" font-size="12">表示</text>
+  <text x="28" y="322" fill="#667085" font-family="Arial, sans-serif" font-size="12">Bucket region: ap-northeast-1</text>
 
-  <rect x="0.5" y="395.5" width="359" height="44" fill="#FFFFFF" stroke="#D8DEE8"/>
-  <text x="28" y="423" fill="#667085" font-family="Arial, sans-serif" font-size="13" font-weight="700">OBJECTS</text>
-  <text x="316" y="423" text-anchor="end" fill="#667085" font-family="Arial, sans-serif" font-size="13" font-weight="700">4</text>
-  <rect x="20.5" y="450.5" width="319" height="38" rx="7" fill="#FFFFFF" stroke="#D8DEE8"/>
-  <text x="34" y="475" fill="#667085" font-family="Arial, sans-serif" font-size="14">app</text>
-  <line x1="0" y1="499.5" x2="360" y2="499.5" stroke="#D8DEE8"/>
-  <rect x="0" y="500" width="360" height="42" fill="#FFFFFF"/>
-  <text x="28" y="526" fill="#667085" font-family="Arial, sans-serif" font-size="14">../</text>
-  <text x="76" y="526" fill="#667085" font-family="Arial, sans-serif" font-size="12">親Prefixへ移動</text>
-  <line x1="0" y1="542.5" x2="360" y2="542.5" stroke="#D8DEE8"/>
-  <rect x="0" y="543" width="360" height="58" fill="#E8F2EF"/>
-  <text x="28" y="577" fill="#A96500" font-family="Arial, sans-serif" font-size="18">★</text>
-  <line x1="52" y1="543" x2="52" y2="601" stroke="#D8DEE8"/>
-  <text x="68" y="569" fill="#17202A" font-family="Arial, sans-serif" font-size="14" font-weight="700">logs/2026/app.env</text>
-  <text x="68" y="591" fill="#667085" font-family="Arial, sans-serif" font-size="12">265 B · 2026-05-16T07:38:39.000Z</text>
-  <line x1="0" y1="601.5" x2="360" y2="601.5" stroke="#D8DEE8"/>
-  <text x="28" y="635" fill="#8993A3" font-family="Arial, sans-serif" font-size="18">☆</text>
-  <line x1="52" y1="602" x2="52" y2="660" stroke="#D8DEE8"/>
-  <text x="68" y="629" fill="#17202A" font-family="Arial, sans-serif" font-size="14">logs/2026/app.log</text>
-  <text x="68" y="651" fill="#667085" font-family="Arial, sans-serif" font-size="12">9.8 KiB · 2026-05-15T12:20:01.000Z</text>
+  <text x="28" y="354" fill="#667085" font-family="Arial, sans-serif" font-size="13" font-weight="700">PREFIX</text>
+  <rect x="28.5" y="368.5" width="222" height="38" rx="7" fill="#FFFFFF" stroke="#D8DEE8"/>
+  <text x="42" y="393" fill="#17202A" font-family="Arial, sans-serif" font-size="15">logs/2026/</text>
+  <rect x="258" y="368" width="74" height="39" rx="7" fill="#126A5A"/>
+  <text x="282" y="393" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="15" font-weight="700">検索</text>
+
+  <rect x="0.5" y="424.5" width="359" height="44" fill="#FFFFFF" stroke="#D8DEE8"/>
+  <text x="28" y="452" fill="#667085" font-family="Arial, sans-serif" font-size="13" font-weight="700">OBJECTS</text>
+  <text x="316" y="452" text-anchor="end" fill="#667085" font-family="Arial, sans-serif" font-size="13" font-weight="700">2/4</text>
+  <rect x="20.5" y="479.5" width="319" height="38" rx="7" fill="#FFFFFF" stroke="#D8DEE8"/>
+  <text x="34" y="504" fill="#667085" font-family="Arial, sans-serif" font-size="14">app</text>
+  <line x1="0" y1="528.5" x2="360" y2="528.5" stroke="#D8DEE8"/>
+  <rect x="0" y="529" width="360" height="42" fill="#FFFFFF"/>
+  <text x="28" y="555" fill="#667085" font-family="Arial, sans-serif" font-size="14">../</text>
+  <text x="76" y="555" fill="#667085" font-family="Arial, sans-serif" font-size="12">親Prefixへ移動</text>
+  <line x1="0" y1="571.5" x2="360" y2="571.5" stroke="#D8DEE8"/>
+  <rect x="0" y="572" width="360" height="50" fill="#E8F2EF"/>
+  <text x="28" y="603" fill="#A96500" font-family="Arial, sans-serif" font-size="18">★</text>
+  <line x1="52" y1="572" x2="52" y2="622" stroke="#D8DEE8"/>
+  <text x="68" y="598" fill="#17202A" font-family="Arial, sans-serif" font-size="14" font-weight="700">logs/2026/app.env</text>
+  <text x="68" y="616" fill="#667085" font-family="Arial, sans-serif" font-size="12">265 B · 2026-05-16T07:38:39.000Z</text>
+  <line x1="0" y1="622.5" x2="360" y2="622.5" stroke="#D8DEE8"/>
+  <text x="28" y="653" fill="#8993A3" font-family="Arial, sans-serif" font-size="18">☆</text>
+  <line x1="52" y1="623" x2="52" y2="673" stroke="#D8DEE8"/>
+  <text x="68" y="649" fill="#17202A" font-family="Arial, sans-serif" font-size="14">logs/2026/app.log</text>
+  <text x="68" y="667" fill="#667085" font-family="Arial, sans-serif" font-size="12">9.8 KiB · 2026-05-15T12:20:01.000Z</text>
 
   <rect x="0.5" y="684.5" width="359" height="215" fill="#FFFFFF" stroke="#D8DEE8"/>
   <text x="28" y="713" fill="#667085" font-family="Arial, sans-serif" font-size="13" font-weight="700">お気に入り</text>

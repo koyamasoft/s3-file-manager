@@ -15,6 +15,7 @@ type LoadWebAppOptions = {
   fetchHandler?: (url: URL, init?: RequestInit) => Response | null | undefined | Promise<Response | null | undefined>;
   confirmResponses?: boolean[];
   promptResponses?: string[];
+  waitForObjects?: boolean;
 };
 
 async function loadWebApp(options: LoadWebAppOptions = {}) {
@@ -90,7 +91,9 @@ async function loadWebApp(options: LoadWebAppOptions = {}) {
 
   const appUrl = `${pathToFileURL(join(root, "src/web/app.js")).href}?t=${Date.now()}-${Math.random()}`;
   await import(appUrl);
-  await waitFor(() => dom.window.document.querySelector("#objectCount")?.textContent === "3");
+  if (options.waitForObjects !== false) {
+    await waitFor(() => dom.window.document.querySelector("#objectCount")?.textContent === "3");
+  }
   return { dom, copied };
 }
 
@@ -108,6 +111,142 @@ async function waitFor(check: () => boolean): Promise<void> {
   }
   assert.fail("Timed out waiting for Web UI state.");
 }
+
+test("Web UI does not select the first bucket on initial load", async () => {
+  let listRequests = 0;
+  const { dom } = await loadWebApp({
+    waitForObjects: false,
+    fetchHandler: (url) => {
+      if (url.pathname === "/api/config") {
+        return jsonResponse({
+          bucket: null,
+          region: "ap-northeast-1",
+          endpoint: null,
+          forcePathStyle: false,
+          isAwsS3: true,
+          allowWrite: true,
+          allowCreateBucket: false,
+          credentialRefreshes: 0,
+          csrfToken: "test-token",
+        });
+      }
+      if (url.pathname === "/api/buckets") {
+        return jsonResponse({
+          buckets: [
+            { name: "first-bucket", creationDate: null },
+            { name: "second-bucket", creationDate: null },
+          ],
+        });
+      }
+      if (url.pathname === "/api/list") {
+        listRequests += 1;
+      }
+      return null;
+    },
+  });
+
+  await waitFor(() => dom.window.document.querySelector("#toast")?.textContent === "バケットを選択してください。");
+
+  assert.equal(dom.window.document.querySelector("#connectionLabel")?.textContent, "バケット未選択 · AWS S3");
+  assert.equal((dom.window.document.querySelector<HTMLInputElement>("#bucketSearchInput")?.value), "");
+  assert.equal(listRequests, 0);
+});
+
+test("Web UI shows all bucket suggestions when many buckets are available", async () => {
+  const buckets = Array.from({ length: 25 }, (_, index) => ({
+    name: `bucket-${String(index + 1).padStart(2, "0")}`,
+    creationDate: null,
+  }));
+  const { dom } = await loadWebApp({
+    waitForObjects: false,
+    fetchHandler: (url) => {
+      if (url.pathname === "/api/config") {
+        return jsonResponse({
+          bucket: null,
+          region: "ap-northeast-1",
+          endpoint: null,
+          forcePathStyle: false,
+          isAwsS3: true,
+          allowWrite: true,
+          allowCreateBucket: false,
+          credentialRefreshes: 0,
+          csrfToken: "test-token",
+        });
+      }
+      if (url.pathname === "/api/buckets") {
+        return jsonResponse({ buckets });
+      }
+      return null;
+    },
+  });
+
+  await waitFor(() => dom.window.document.querySelector("#toast")?.textContent === "バケットを選択してください。");
+
+  const input = dom.window.document.querySelector<HTMLInputElement>("#bucketSearchInput");
+  assert.ok(input);
+  input.dispatchEvent(new dom.window.Event("focus", { bubbles: true }));
+
+  const suggestions = dom.window.document.querySelectorAll("#bucketSuggestions .bucket-suggestion");
+  assert.equal(suggestions.length, 25);
+  assert.equal(suggestions[24]?.textContent, "bucket-25");
+});
+
+test("Web UI clears prefix, filter, and objects when switching buckets", async () => {
+  const listRequests: string[] = [];
+  const { dom } = await loadWebApp({
+    fetchHandler: (url) => {
+      if (url.pathname === "/api/buckets") {
+        return jsonResponse({
+          buckets: [
+            { name: "my-bucket", creationDate: null },
+            { name: "next-bucket", creationDate: null },
+          ],
+        });
+      }
+      if (url.pathname === "/api/list") {
+        listRequests.push(`${url.searchParams.get("bucket")}:${url.searchParams.get("prefix") ?? ""}`);
+        if (url.searchParams.get("bucket") === "next-bucket") {
+          return jsonResponse({
+            isTruncated: false,
+            nextContinuationToken: null,
+            limit: 1000,
+            objects: [
+              { key: "fresh.txt", size: 5, sizeLabel: "5 B", lastModified: "2026-05-24T00:03:00.000Z" },
+            ],
+          });
+        }
+      }
+      return null;
+    },
+  });
+
+  const prefix = dom.window.document.querySelector<HTMLInputElement>("#prefixInput");
+  const filter = dom.window.document.querySelector<HTMLInputElement>("#objectFilterInput");
+  const bucket = dom.window.document.querySelector<HTMLInputElement>("#bucketSearchInput");
+  assert.ok(prefix);
+  assert.ok(filter);
+  assert.ok(bucket);
+
+  prefix.value = "";
+  filter.value = "report";
+  filter.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+  assert.equal(dom.window.document.querySelector("#objectCount")?.textContent, "1/3");
+
+  bucket.value = "next";
+  bucket.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+  const nextBucket = [...dom.window.document.querySelectorAll<HTMLButtonElement>("#bucketSuggestions .bucket-suggestion")]
+    .find((button) => button.textContent === "next-bucket");
+  assert.ok(nextBucket);
+  nextBucket.dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true }));
+
+  await waitFor(() => dom.window.document.querySelector("#objectList")?.textContent?.includes("fresh.txt") ?? false);
+
+  assert.equal(prefix.value, "");
+  assert.equal(filter.value, "");
+  assert.deepEqual(listRequests.at(-1), "next-bucket:");
+  assert.equal(dom.window.document.querySelector("#objectCount")?.textContent, "1");
+  assert.doesNotMatch(dom.window.document.querySelector("#objectList")?.textContent ?? "", /report\.txt/);
+});
 
 test("Web UI filters the loaded object list locally", async () => {
   const { dom } = await loadWebApp();

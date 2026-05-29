@@ -392,7 +392,7 @@ function renderBucketSuggestions(show = false) {
     return;
   }
 
-  for (const name of names.slice(0, 20)) {
+  for (const name of names) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "bucket-suggestion";
@@ -471,9 +471,17 @@ function renderBucketSearch() {
 async function selectBucket(bucket) {
   state.selectedBucket = bucket;
   elements.bucketSearchInput.value = bucket;
+  elements.prefixInput.value = "";
+  elements.objectFilterInput.value = "";
+  state.objects = [];
+  state.listTruncated = false;
+  state.listContinuationToken = null;
+  state.loadingMore = false;
   renderBucketSuggestions(false);
+  renderPrefixSuggestions(false);
   updateConnectionLabel();
   clearSelection();
+  renderObjectList();
   try {
     await loadObjects();
     showToast(`バケットを切り替えました: ${state.selectedBucket}`);
@@ -782,9 +790,6 @@ async function loadBuckets() {
   try {
     const data = await requestJson("/api/buckets");
     state.buckets = data.buckets;
-    if (!state.selectedBucket && state.buckets.length > 0) {
-      state.selectedBucket = state.buckets[0].name;
-    }
   } catch (error) {
     state.buckets = [];
     showToast(`バケット一覧を取得できませんでした: ${error.message}`, "error");

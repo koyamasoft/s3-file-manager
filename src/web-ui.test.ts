@@ -223,6 +223,7 @@ test("Web UI displays the selected bucket region and switches to it", async () =
   await waitFor(() => dom.window.document.querySelector("#bucketRegionHint")?.textContent === "Bucket region: us-west-2 / Current: ap-northeast-1");
   assert.equal(dom.window.document.querySelector("#connectionLabel")?.textContent, "my-bucket · AWS S3 · ap-northeast-1");
   assert.equal(dom.window.document.querySelector<HTMLInputElement>("#regionInput")?.value, "ap-northeast-1");
+  assert.equal(dom.window.document.querySelector<HTMLDetailsElement>("#regionPanel")?.open, false);
 
   dom.window.document.querySelector<HTMLButtonElement>("#regionMatchBucketButton")?.click();
 

@@ -30,21 +30,23 @@
             <div id="bucketSuggestions" class="bucket-suggestions hidden"></div>
           </div>
 
-          <label for="regionInput">Region</label>
-          <div class="inline-row region-row">
-            <input id="regionInput" name="region" type="text" list="regionList" placeholder="ap-northeast-1">
-            <button id="regionApplyButton" type="button">切替</button>
-            <button id="regionMatchBucketButton" type="button">合わせる</button>
-            <datalist id="regionList">
-              <option value="ap-northeast-1"></option>
-              <option value="ap-northeast-3"></option>
-              <option value="us-east-1"></option>
-              <option value="us-west-2"></option>
-              <option value="eu-west-1"></option>
-              <option value="ap-southeast-1"></option>
-            </datalist>
-          </div>
-          <p id="bucketRegionHint" class="region-hint">バケット未選択</p>
+          <details id="regionPanel" class="region-panel">
+            <summary>Region</summary>
+            <div class="inline-row region-row">
+              <input id="regionInput" name="region" type="text" list="regionList" placeholder="ap-northeast-1" aria-label="Region">
+              <button id="regionApplyButton" type="button">切替</button>
+              <button id="regionMatchBucketButton" type="button">合わせる</button>
+              <datalist id="regionList">
+                <option value="ap-northeast-1"></option>
+                <option value="ap-northeast-3"></option>
+                <option value="us-east-1"></option>
+                <option value="us-west-2"></option>
+                <option value="eu-west-1"></option>
+                <option value="ap-southeast-1"></option>
+              </datalist>
+            </div>
+            <p id="bucketRegionHint" class="region-hint">バケット未選択</p>
+          </details>
 
           <label for="prefixInput">Prefix</label>
           <div class="inline-row prefix-row">

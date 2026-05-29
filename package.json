@@ -6,8 +6,10 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
+    "pres3": "npm run build",
     "s3": "node dist/cli.js",
     "test": "npm run build && node --test dist/*.test.js",
+    "preweb": "npm run build",
     "web": "node dist/server.js",
     "typecheck": "tsc --noEmit"
   },

@@ -156,6 +156,35 @@ button:disabled {
   position: relative;
 }
 
+.region-panel {
+  margin: 0 0 14px;
+}
+
+.region-panel summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  list-style: none;
+  text-transform: uppercase;
+}
+
+.region-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.region-panel summary::after {
+  content: " 表示";
+  color: var(--muted);
+  font-weight: 500;
+  text-transform: none;
+}
+
+.region-panel[open] summary::after {
+  content: " 非表示";
+}
+
 .region-row {
   grid-template-columns: minmax(0, 1fr) auto auto;
   margin-bottom: 6px;

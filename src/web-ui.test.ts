@@ -191,6 +191,51 @@ test("Web UI shows all bucket suggestions when many buckets are available", asyn
   assert.equal(suggestions[24]?.textContent, "bucket-25");
 });
 
+test("Web UI stores favorite buckets and sorts them first", async () => {
+  const { dom } = await loadWebApp({
+    waitForObjects: false,
+    fetchHandler: (url) => {
+      if (url.pathname === "/api/config") {
+        return jsonResponse({
+          bucket: null,
+          region: "ap-northeast-1",
+          endpoint: null,
+          forcePathStyle: false,
+          isAwsS3: true,
+          allowWrite: true,
+          allowCreateBucket: false,
+          credentialRefreshes: 0,
+          csrfToken: "test-token",
+        });
+      }
+      if (url.pathname === "/api/buckets") {
+        return jsonResponse({
+          buckets: [
+            { name: "alpha-bucket", creationDate: null },
+            { name: "zeta-bucket", creationDate: null },
+          ],
+        });
+      }
+      return null;
+    },
+  });
+
+  await waitFor(() => dom.window.document.querySelector("#toast")?.textContent === "バケットを選択してください。");
+
+  const input = dom.window.document.querySelector<HTMLInputElement>("#bucketSearchInput");
+  assert.ok(input);
+  input.dispatchEvent(new dom.window.Event("focus", { bubbles: true }));
+
+  const zetaRow = [...dom.window.document.querySelectorAll<HTMLElement>("#bucketSuggestions .bucket-suggestion-row")]
+    .find((row) => row.textContent?.includes("zeta-bucket"));
+  assert.ok(zetaRow);
+  zetaRow.querySelector<HTMLButtonElement>(".favorite-button")?.click();
+
+  const suggestions = [...dom.window.document.querySelectorAll<HTMLButtonElement>("#bucketSuggestions .bucket-suggestion")];
+  assert.equal(suggestions[0]?.textContent, "zeta-bucket");
+  assert.deepEqual(JSON.parse(dom.window.localStorage.getItem("s3fm.favoriteBuckets") ?? "[]"), ["zeta-bucket"]);
+});
+
 test("Web UI clears prefix, filter, and objects when switching buckets", async () => {
   const listRequests: string[] = [];
   const { dom } = await loadWebApp({
@@ -246,6 +291,46 @@ test("Web UI clears prefix, filter, and objects when switching buckets", async (
   assert.deepEqual(listRequests.at(-1), "next-bucket:");
   assert.equal(dom.window.document.querySelector("#objectCount")?.textContent, "1");
   assert.doesNotMatch(dom.window.document.querySelector("#objectList")?.textContent ?? "", /report\.txt/);
+});
+
+test("Web UI stores favorite objects and sorts them first", async () => {
+  const { dom } = await loadWebApp();
+
+  const reportRow = [...dom.window.document.querySelectorAll<HTMLElement>("#objectList .favorite-row")]
+    .find((row) => row.textContent?.includes("report.txt"));
+  assert.ok(reportRow);
+  reportRow.querySelector<HTMLButtonElement>(".favorite-button")?.click();
+
+  const rows = [...dom.window.document.querySelectorAll<HTMLElement>("#objectList .favorite-row")];
+  assert.match(rows[0]?.textContent ?? "", /report\.txt/);
+  assert.deepEqual(
+    JSON.parse(dom.window.localStorage.getItem("s3fm.favoriteObjects") ?? "{}"),
+    { "my-bucket": ["report.txt"] },
+  );
+});
+
+test("Web UI pins favorite objects from deeper prefixes", async () => {
+  const { dom } = await loadWebApp();
+
+  const logoButton = [...dom.window.document.querySelectorAll<HTMLButtonElement>("#objectList .prefix-folder")]
+    .find((button) => button.textContent?.includes("images/"));
+  assert.ok(logoButton);
+  logoButton.click();
+  await waitFor(() => dom.window.document.querySelector("#objectList")?.textContent?.includes("logo.png") ?? false);
+
+  const logoRow = [...dom.window.document.querySelectorAll<HTMLElement>("#objectList .favorite-row")]
+    .find((row) => row.textContent?.includes("images/logo.png"));
+  assert.ok(logoRow);
+  logoRow.querySelector<HTMLButtonElement>(".favorite-button")?.click();
+
+  const upButton = dom.window.document.querySelector<HTMLButtonElement>("#objectList .prefix-up");
+  assert.ok(upButton);
+  upButton.click();
+
+  await waitFor(() => dom.window.document.querySelector("#objectList .favorite-pinned")?.textContent?.includes("images/logo.png") ?? false);
+
+  const firstRow = dom.window.document.querySelector<HTMLElement>("#objectList .favorite-row");
+  assert.match(firstRow?.textContent ?? "", /images\/logo\.png/);
 });
 
 test("Web UI filters the loaded object list locally", async () => {

@@ -21,6 +21,8 @@ const state = {
   wideEditor: false,
   dragDepth: 0,
   uploadProgress: null,
+  favoriteBuckets: new Set(),
+  favoriteObjects: {},
 };
 
 const elements = {
@@ -109,6 +111,89 @@ async function requestJson(url, options) {
 function setWarning(message) {
   elements.warningBanner.textContent = message || "";
   elements.warningBanner.classList.toggle("hidden", !message);
+}
+
+function readJsonStorage(key, fallback) {
+  try {
+    const value = window.localStorage?.getItem(key);
+    return value ? JSON.parse(value) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJsonStorage(key, value) {
+  try {
+    window.localStorage?.setItem(key, JSON.stringify(value));
+  } catch {
+    showToast("お気に入りを保存できませんでした。", "error");
+  }
+}
+
+function loadFavorites() {
+  state.favoriteBuckets = new Set(readJsonStorage("s3fm.favoriteBuckets", []));
+  state.favoriteObjects = readJsonStorage("s3fm.favoriteObjects", {});
+}
+
+function saveFavoriteBuckets() {
+  writeJsonStorage("s3fm.favoriteBuckets", [...state.favoriteBuckets].sort((a, b) => a.localeCompare(b)));
+}
+
+function favoriteObjectSet(bucket = state.selectedBucket) {
+  if (!bucket) return new Set();
+  return new Set(state.favoriteObjects[bucket] ?? []);
+}
+
+function saveFavoriteObjects(bucket, favorites) {
+  if (!bucket) return;
+  const values = [...favorites].sort((a, b) => a.localeCompare(b));
+  state.favoriteObjects = { ...state.favoriteObjects };
+  if (values.length > 0) {
+    state.favoriteObjects[bucket] = values;
+  } else {
+    delete state.favoriteObjects[bucket];
+  }
+  writeJsonStorage("s3fm.favoriteObjects", state.favoriteObjects);
+}
+
+function isFavoriteBucket(bucket) {
+  return state.favoriteBuckets.has(bucket);
+}
+
+function isFavoriteObject(key) {
+  return favoriteObjectSet().has(key);
+}
+
+function sortFavoritesFirst(values, isFavorite, compare = () => 0) {
+  return [...values].sort((a, b) => {
+    const favoriteDiff = Number(isFavorite(b)) - Number(isFavorite(a));
+    return favoriteDiff || compare(a, b);
+  });
+}
+
+function toggleFavoriteBucket(bucket) {
+  if (state.favoriteBuckets.has(bucket)) {
+    state.favoriteBuckets.delete(bucket);
+    showToast(`お気に入りから外しました: ${bucket}`);
+  } else {
+    state.favoriteBuckets.add(bucket);
+    showToast(`お気に入りに追加しました: ${bucket}`);
+  }
+  saveFavoriteBuckets();
+  renderBucketSuggestions(!elements.bucketSuggestions.classList.contains("hidden"));
+}
+
+function toggleFavoriteObject(key) {
+  const favorites = favoriteObjectSet();
+  if (favorites.has(key)) {
+    favorites.delete(key);
+    showToast(`お気に入りから外しました: ${key}`);
+  } else {
+    favorites.add(key);
+    showToast(`お気に入りに追加しました: ${key}`);
+  }
+  saveFavoriteObjects(state.selectedBucket, favorites);
+  renderObjectList();
 }
 
 function updateConnectionLabel() {
@@ -299,11 +384,49 @@ function directObjects() {
   });
 }
 
-function appendObjectButton({ className = "", label, meta, active = false, onClick }) {
-  const item = document.createElement("li");
+function favoriteObjectsInCurrentPrefix(directKeys) {
+  const prefix = currentPrefix();
+  const query = currentObjectFilter();
+  const loadedByKey = new Map(state.objects.map((object) => [object.key, object]));
+
+  return [...favoriteObjectSet()]
+    .filter((key) => key.startsWith(prefix))
+    .filter((key) => key !== prefix)
+    .filter((key) => !directKeys.has(key))
+    .filter((key) => !query || key.toLowerCase().includes(query))
+    .sort((a, b) => a.localeCompare(b))
+    .map((key) => loadedByKey.get(key) ?? {
+      key,
+      sizeLabel: "お気に入り",
+      lastModified: null,
+    });
+}
+
+function favoriteButton({ active, label, onClick }) {
   const button = document.createElement("button");
   button.type = "button";
-  if (className) button.className = className;
+  button.className = "favorite-button";
+  button.classList.toggle("active", active);
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  button.textContent = active ? "★" : "☆";
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onClick();
+  });
+  return button;
+}
+
+function appendObjectButton({ className = "", label, meta, active = false, favorite = false, onFavorite, onClick }) {
+  const item = document.createElement("li");
+  if (onFavorite) item.classList.add("favorite-row");
+  if (favorite) item.classList.add("favorite");
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "object-open-button";
+  if (className) button.classList.add(className);
   button.classList.toggle("active", active);
 
   const key = document.createElement("span");
@@ -316,6 +439,13 @@ function appendObjectButton({ className = "", label, meta, active = false, onCli
 
   button.append(key, detail);
   button.addEventListener("click", onClick);
+  if (onFavorite) {
+    item.append(favoriteButton({
+      active: favorite,
+      label: favorite ? `${label} のお気に入りを解除` : `${label} をお気に入りに追加`,
+      onClick: onFavorite,
+    }));
+  }
   item.append(button);
   elements.objectList.append(item);
 }
@@ -323,7 +453,9 @@ function appendObjectButton({ className = "", label, meta, active = false, onCli
 function renderObjectList() {
   const folders = childPrefixes();
   const objects = directObjects();
-  const count = objects.length + folders.length;
+  const directKeys = new Set(objects.map((object) => object.key));
+  const pinnedFavorites = favoriteObjectsInCurrentPrefix(directKeys);
+  const count = objects.length + folders.length + pinnedFavorites.length;
   const filter = currentObjectFilter();
   const suffix = state.listTruncated ? "+" : "";
   elements.objectCount.textContent = filter ? `${count}/${state.objects.length}${suffix}` : `${count}${suffix}`;
@@ -338,6 +470,20 @@ function renderObjectList() {
     });
   }
 
+  for (const object of pinnedFavorites) {
+    appendObjectButton({
+      className: "favorite-pinned",
+      label: object.key,
+      meta: object.lastModified ? `${object.sizeLabel} · ${object.lastModified}` : object.sizeLabel,
+      active: object.key === state.selectedKey,
+      favorite: true,
+      onFavorite: () => toggleFavoriteObject(object.key),
+      onClick: () => {
+        openObject(object.key).catch((error) => showToast(error.message, "error"));
+      },
+    });
+  }
+
   for (const prefix of folders) {
     appendObjectButton({
       className: "prefix-folder",
@@ -347,11 +493,15 @@ function renderObjectList() {
     });
   }
 
-  for (const object of objects) {
+  const sortedObjects = sortFavoritesFirst(objects, (object) => isFavoriteObject(object.key));
+  for (const object of sortedObjects) {
+    const favorite = isFavoriteObject(object.key);
     appendObjectButton({
       label: object.key,
       meta: `${object.sizeLabel} · ${object.lastModified ?? "-"}`,
       active: object.key === state.selectedKey,
+      favorite,
+      onFavorite: () => toggleFavoriteObject(object.key),
       onClick: () => {
         openObject(object.key).catch((error) => showToast(error.message, "error"));
       },
@@ -374,7 +524,7 @@ function bucketNames() {
   const names = state.buckets.length > 0
     ? state.buckets.map((bucket) => bucket.name)
     : state.config.bucket ? [state.config.bucket] : [];
-  return [...new Set(names)].sort((a, b) => a.localeCompare(b));
+  return sortFavoritesFirst([...new Set(names)], isFavoriteBucket, (a, b) => a.localeCompare(b));
 }
 
 function filteredBucketNames() {
@@ -393,6 +543,16 @@ function renderBucketSuggestions(show = false) {
   }
 
   for (const name of names) {
+    const row = document.createElement("div");
+    row.className = "bucket-suggestion-row";
+    row.classList.toggle("favorite", isFavoriteBucket(name));
+
+    row.append(favoriteButton({
+      active: isFavoriteBucket(name),
+      label: isFavoriteBucket(name) ? `${name} のお気に入りを解除` : `${name} をお気に入りに追加`,
+      onClick: () => toggleFavoriteBucket(name),
+    }));
+
     const button = document.createElement("button");
     button.type = "button";
     button.className = "bucket-suggestion";
@@ -402,7 +562,8 @@ function renderBucketSuggestions(show = false) {
       event.preventDefault();
       selectBucket(name);
     });
-    elements.bucketSuggestions.append(button);
+    row.append(button);
+    elements.bucketSuggestions.append(row);
   }
 
   elements.bucketSuggestions.classList.remove("hidden");
@@ -1388,6 +1549,7 @@ function setDragActive(active) {
 
 async function boot() {
   try {
+    loadFavorites();
     await loadConfig();
     await loadBuckets();
     await loadObjects();

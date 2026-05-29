@@ -201,6 +201,46 @@ select {
   overflow-wrap: anywhere;
 }
 
+.bucket-suggestion-row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+}
+
+.bucket-suggestion-row .bucket-suggestion {
+  border-bottom: 0;
+}
+
+.bucket-suggestion-row.favorite .bucket-suggestion,
+.favorite-row.favorite .object-open-button {
+  font-weight: 700;
+}
+
+.favorite-button {
+  width: 36px;
+  min-height: 34px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+  color: #8993a3;
+  text-align: center;
+}
+
+.bucket-suggestion-row .favorite-button {
+  border-bottom: 0;
+}
+
+.favorite-button:hover,
+.favorite-button.active {
+  background: #fff7df;
+  color: #a96500;
+}
+
 .suggestion:hover,
 .suggestion.active,
 .bucket-suggestion:hover,
@@ -252,7 +292,7 @@ select {
   width: 100%;
 }
 
-.object-list button {
+.object-open-button {
   width: 100%;
   min-height: 58px;
   padding: 10px 20px;
@@ -264,23 +304,44 @@ select {
   text-align: left;
 }
 
-.object-list button:hover,
-.object-list button.active,
-.object-list button.prefix-folder:hover {
+.favorite-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  border-bottom: 1px solid var(--line);
+}
+
+.favorite-row .favorite-button {
+  width: 44px;
+  min-height: 58px;
+  border-right: 1px solid var(--line);
+  border-bottom: 0;
+}
+
+.favorite-row .object-open-button {
+  border-bottom: 0;
+}
+
+.object-open-button:hover,
+.object-open-button.active,
+.object-open-button.prefix-folder:hover {
   background: #e8f2ef;
 }
 
-.object-list button.prefix-folder {
+.object-open-button.prefix-folder {
   min-height: 46px;
   background: #fbfcfe;
   color: var(--accent-strong);
   font-weight: 700;
 }
 
-.object-list button.prefix-up {
+.object-open-button.prefix-up {
   min-height: 42px;
   background: #fff;
   color: var(--muted);
+}
+
+.object-open-button.favorite-pinned {
+  background: #fffdf5;
 }
 
 .object-list-empty {

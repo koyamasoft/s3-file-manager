@@ -33,6 +33,9 @@ export type ListObjectsResult = {
 export function createS3Client(config: ToolConfig): S3Client {
   return new S3Client({
     region: config.region,
+    ...(!config.endpoint && {
+      followRegionRedirects: true,
+    }),
     ...(config.endpoint && {
       endpoint: config.endpoint,
       forcePathStyle: config.forcePathStyle,

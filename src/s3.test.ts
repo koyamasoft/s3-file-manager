@@ -1,6 +1,31 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { copyObject, listObjects } from "./s3.js";
+import { copyObject, createS3Client, listObjects } from "./s3.js";
+
+test("createS3Client follows AWS S3 region redirects for buckets in other regions", () => {
+  const client = createS3Client({
+    region: "ap-northeast-1",
+    forcePathStyle: false,
+    workDir: ".s3-work",
+    editor: "vi",
+  });
+
+  assert.equal(client.config.followRegionRedirects, true);
+  client.destroy();
+});
+
+test("createS3Client does not enable region redirects for custom endpoints", () => {
+  const client = createS3Client({
+    region: "ap-northeast-1",
+    endpoint: "http://127.0.0.1:9000",
+    forcePathStyle: true,
+    workDir: ".s3-work",
+    editor: "vi",
+  });
+
+  assert.equal(client.config.followRegionRedirects, false);
+  client.destroy();
+});
 
 test("listObjects stops at the requested limit and reports truncation", async () => {
   const calls: unknown[] = [];

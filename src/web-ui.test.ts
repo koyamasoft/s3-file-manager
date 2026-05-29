@@ -362,6 +362,61 @@ test("Web UI lists favorites and removes them from the manager", async () => {
   assert.deepEqual(JSON.parse(dom.window.localStorage.getItem("s3fm.favoriteObjects") ?? "{}"), {});
 });
 
+test("Web UI resizes and stores the env key column width", async () => {
+  const { dom } = await loadWebApp({
+    waitForObjects: false,
+    fetchHandler: (url) => {
+      if (url.pathname === "/api/list") {
+        return jsonResponse({
+          isTruncated: false,
+          nextContinuationToken: null,
+          limit: 1000,
+          objects: [
+            ...objects,
+            { key: ".env", size: 18, sizeLabel: "18 B", lastModified: "2026-05-24T00:03:00.000Z" },
+          ],
+        });
+      }
+      if (url.pathname === "/api/object" && url.searchParams.get("key") === ".env") {
+        return jsonResponse({
+          metadata: {
+            key: ".env",
+            etag: "\"etag\"",
+            contentType: "text/plain; charset=utf-8",
+            contentLength: 18,
+            lastModified: "2026-05-24T00:00:00.000Z",
+          },
+          text: true,
+          content: "LONG_KEY=value",
+        });
+      }
+      return null;
+    },
+  });
+
+  await waitFor(() => dom.window.document.querySelector("#objectList")?.textContent?.includes(".env") ?? false);
+
+  const envOpenButton = [...dom.window.document.querySelectorAll<HTMLButtonElement>("#objectList .object-open-button")]
+    .find((button) => button.textContent?.includes(".env"));
+  assert.ok(envOpenButton);
+  envOpenButton.click();
+  await waitFor(() => !!dom.window.document.querySelector(".env-key-resizer"));
+
+  const resizer = dom.window.document.querySelector<HTMLButtonElement>(".env-key-resizer");
+  assert.ok(resizer);
+  const beforeWidth = Number.parseInt(
+    dom.window.document.documentElement.style.getPropertyValue("--env-key-width"),
+    10,
+  );
+  resizer.dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true, clientX: 100 }));
+  dom.window.document.dispatchEvent(new dom.window.MouseEvent("mousemove", { bubbles: true, clientX: 180 }));
+  dom.window.document.dispatchEvent(new dom.window.MouseEvent("mouseup", { bubbles: true }));
+
+  const expectedWidth = beforeWidth + 80;
+  assert.equal(dom.window.document.documentElement.style.getPropertyValue("--env-key-width"), `${expectedWidth}px`);
+  assert.equal(dom.window.localStorage.getItem("s3fm.envKeyWidth"), String(expectedWidth));
+});
+
 test("Web UI filters the loaded object list locally", async () => {
   const { dom } = await loadWebApp();
   const input = dom.window.document.querySelector<HTMLInputElement>("#objectFilterInput");

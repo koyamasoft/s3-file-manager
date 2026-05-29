@@ -12,6 +12,7 @@
   --warning-text: #6f4d00;
   --code-bg: #101820;
   --code-text: #edf6f9;
+  --env-key-width: 260px;
 }
 
 * {
@@ -687,7 +688,7 @@ textarea:disabled {
 
 .env-row {
   display: grid;
-  grid-template-columns: minmax(140px, 260px) minmax(0, 1fr) 36px;
+  grid-template-columns: minmax(120px, var(--env-key-width)) 8px minmax(0, 1fr) 36px;
   gap: 8px;
   align-items: center;
   margin-bottom: 8px;
@@ -701,6 +702,26 @@ textarea:disabled {
   width: 100%;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 13px;
+}
+
+.env-key-resizer {
+  width: 8px;
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: col-resize;
+}
+
+.env-key-resizer:hover,
+body.resizing-env-key .env-key-resizer {
+  background: var(--line);
+}
+
+body.resizing-env-key {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .env-raw-line {
@@ -902,6 +923,10 @@ pre {
   .env-row,
   .env-row.raw {
     grid-template-columns: 1fr;
+  }
+
+  .env-key-resizer {
+    display: none;
   }
 
   .warning,

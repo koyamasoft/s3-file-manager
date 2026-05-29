@@ -23,6 +23,7 @@ const state = {
   uploadProgress: null,
   favoriteBuckets: new Set(),
   favoriteObjects: {},
+  envKeyWidth: 260,
 };
 
 const elements = {
@@ -131,10 +132,36 @@ function writeJsonStorage(key, value) {
   }
 }
 
+function readNumberStorage(key, fallback) {
+  const value = Number(window.localStorage?.getItem(key));
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
 function loadFavorites() {
   state.favoriteBuckets = new Set(readJsonStorage("s3fm.favoriteBuckets", []));
   state.favoriteObjects = readJsonStorage("s3fm.favoriteObjects", {});
   renderFavoriteList();
+}
+
+function loadEnvLayout() {
+  state.envKeyWidth = clamp(readNumberStorage("s3fm.envKeyWidth", 260), 120, 640);
+  applyEnvKeyWidth();
+}
+
+function applyEnvKeyWidth() {
+  document.documentElement.style.setProperty("--env-key-width", `${state.envKeyWidth}px`);
+}
+
+function saveEnvKeyWidth() {
+  try {
+    window.localStorage?.setItem("s3fm.envKeyWidth", String(Math.round(state.envKeyWidth)));
+  } catch {
+    showToast("env列幅を保存できませんでした。", "error");
+  }
 }
 
 function saveFavoriteBuckets() {
@@ -881,6 +908,27 @@ function getCurrentContent() {
   return state.isEnvMode ? serializeEnvRows() : elements.editor.value;
 }
 
+function startEnvKeyResize(event) {
+  event.preventDefault();
+  const startX = event.clientX;
+  const startWidth = state.envKeyWidth;
+
+  const onMove = (moveEvent) => {
+    state.envKeyWidth = clamp(startWidth + moveEvent.clientX - startX, 120, 640);
+    applyEnvKeyWidth();
+  };
+  const onUp = () => {
+    saveEnvKeyWidth();
+    document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseup", onUp);
+    document.body.classList.remove("resizing-env-key");
+  };
+
+  document.body.classList.add("resizing-env-key");
+  document.addEventListener("mousemove", onMove);
+  document.addEventListener("mouseup", onUp);
+}
+
 function renderEnvRows() {
   elements.envRows.replaceChildren();
 
@@ -903,6 +951,13 @@ function renderEnvRows() {
         row.key = key.value;
       });
 
+      const resize = document.createElement("button");
+      resize.type = "button";
+      resize.className = "env-key-resizer";
+      resize.title = "キー列の幅を変更";
+      resize.setAttribute("aria-label", "キー列の幅を変更");
+      resize.addEventListener("mousedown", startEnvKeyResize);
+
       const value = document.createElement("input");
       value.type = "text";
       value.placeholder = "value";
@@ -912,7 +967,7 @@ function renderEnvRows() {
         row.value = value.value;
       });
 
-      wrapper.append(key, value);
+      wrapper.append(key, resize, value);
     }
 
     const remove = document.createElement("button");
@@ -1671,6 +1726,7 @@ function setDragActive(active) {
 async function boot() {
   try {
     loadFavorites();
+    loadEnvLayout();
     await loadConfig();
     await loadBuckets();
     await loadObjects();

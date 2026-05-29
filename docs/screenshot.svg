@@ -17,9 +17,12 @@
   <rect x="28.5" y="139.5" width="303" height="38" rx="7" fill="#FFFFFF" stroke="#D8DEE8"/>
   <text x="42" y="164" fill="#17202A" font-family="Arial, sans-serif" font-size="15">example-assets-bucket</text>
   <rect x="28.5" y="181.5" width="303" height="96" rx="7" fill="#FFFFFF" stroke="#D8DEE8"/>
-  <text x="42" y="207" fill="#126A5A" font-family="Arial, sans-serif" font-size="14" font-weight="700">example-assets-bucket</text>
-  <text x="42" y="237" fill="#17202A" font-family="Arial, sans-serif" font-size="14">example-archive-bucket</text>
-  <text x="42" y="267" fill="#17202A" font-family="Arial, sans-serif" font-size="14">my-local-bucket</text>
+  <text x="42" y="207" fill="#A96500" font-family="Arial, sans-serif" font-size="17">★</text>
+  <text x="70" y="207" fill="#126A5A" font-family="Arial, sans-serif" font-size="14" font-weight="700">example-assets-bucket</text>
+  <text x="42" y="237" fill="#8993A3" font-family="Arial, sans-serif" font-size="17">☆</text>
+  <text x="70" y="237" fill="#17202A" font-family="Arial, sans-serif" font-size="14">example-archive-bucket</text>
+  <text x="42" y="267" fill="#8993A3" font-family="Arial, sans-serif" font-size="17">☆</text>
+  <text x="70" y="267" fill="#17202A" font-family="Arial, sans-serif" font-size="14">my-local-bucket</text>
 
   <text x="28" y="314" fill="#667085" font-family="Arial, sans-serif" font-size="13" font-weight="700">PREFIX</text>
   <rect x="28.5" y="328.5" width="222" height="38" rx="7" fill="#FFFFFF" stroke="#D8DEE8"/>
@@ -38,11 +41,28 @@
   <text x="76" y="526" fill="#667085" font-family="Arial, sans-serif" font-size="12">親Prefixへ移動</text>
   <line x1="0" y1="542.5" x2="360" y2="542.5" stroke="#D8DEE8"/>
   <rect x="0" y="543" width="360" height="58" fill="#E8F2EF"/>
-  <text x="28" y="569" fill="#17202A" font-family="Arial, sans-serif" font-size="14">logs/2026/app.env</text>
-  <text x="28" y="591" fill="#667085" font-family="Arial, sans-serif" font-size="12">265 B · 2026-05-16T07:38:39.000Z</text>
+  <text x="28" y="577" fill="#A96500" font-family="Arial, sans-serif" font-size="18">★</text>
+  <line x1="52" y1="543" x2="52" y2="601" stroke="#D8DEE8"/>
+  <text x="68" y="569" fill="#17202A" font-family="Arial, sans-serif" font-size="14" font-weight="700">logs/2026/app.env</text>
+  <text x="68" y="591" fill="#667085" font-family="Arial, sans-serif" font-size="12">265 B · 2026-05-16T07:38:39.000Z</text>
   <line x1="0" y1="601.5" x2="360" y2="601.5" stroke="#D8DEE8"/>
-  <text x="28" y="629" fill="#17202A" font-family="Arial, sans-serif" font-size="14">logs/2026/app.log</text>
-  <text x="28" y="651" fill="#667085" font-family="Arial, sans-serif" font-size="12">9.8 KiB · 2026-05-15T12:20:01.000Z</text>
+  <text x="28" y="635" fill="#8993A3" font-family="Arial, sans-serif" font-size="18">☆</text>
+  <line x1="52" y1="602" x2="52" y2="660" stroke="#D8DEE8"/>
+  <text x="68" y="629" fill="#17202A" font-family="Arial, sans-serif" font-size="14">logs/2026/app.log</text>
+  <text x="68" y="651" fill="#667085" font-family="Arial, sans-serif" font-size="12">9.8 KiB · 2026-05-15T12:20:01.000Z</text>
+
+  <rect x="0.5" y="684.5" width="359" height="215" fill="#FFFFFF" stroke="#D8DEE8"/>
+  <text x="28" y="713" fill="#667085" font-family="Arial, sans-serif" font-size="13" font-weight="700">お気に入り</text>
+  <line x1="0" y1="728.5" x2="360" y2="728.5" stroke="#D8DEE8"/>
+  <text x="28" y="756" fill="#667085" font-family="Arial, sans-serif" font-size="12" font-weight="700">BUCKETS</text>
+  <rect x="20.5" y="769.5" width="319" height="42" rx="7" fill="#FFFFFF" stroke="#D8DEE8"/>
+  <text x="34" y="795" fill="#17202A" font-family="Arial, sans-serif" font-size="13" font-weight="700">example-assets-bucket</text>
+  <text x="318" y="795" text-anchor="middle" fill="#9F2A2A" font-family="Arial, sans-serif" font-size="18">×</text>
+  <text x="28" y="836" fill="#667085" font-family="Arial, sans-serif" font-size="12" font-weight="700">OBJECTS</text>
+  <rect x="20.5" y="849.5" width="319" height="42" rx="7" fill="#FFFDF5" stroke="#D8DEE8"/>
+  <text x="34" y="874" fill="#17202A" font-family="Arial, sans-serif" font-size="13" font-weight="700">logs/2026/app.env</text>
+  <text x="236" y="874" fill="#667085" font-family="Arial, sans-serif" font-size="11">example-assets</text>
+  <text x="318" y="874" text-anchor="middle" fill="#9F2A2A" font-family="Arial, sans-serif" font-size="18">×</text>
 
   <rect x="360" y="0.5" width="1079.5" height="88" fill="#FFFFFF" stroke="#D8DEE8"/>
   <rect x="382" y="24" width="54" height="28" rx="14" fill="#DFF3EC"/>

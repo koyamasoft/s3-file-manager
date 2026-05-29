@@ -15,6 +15,7 @@ AWS 認証情報はブラウザに渡しません。localhost の Node.js サー
 - Prefix 検索、サジェスト、階層ナビゲーション
 - 表示中オブジェクトの key フィルタ検索
 - オブジェクト一覧、メタデータ確認、画像/PDFプレビュー
+- バケット / オブジェクトのお気に入り登録、一覧表示、削除
 - Web UI からのオブジェクトダウンロード
 - テキストファイルの表示・編集・Content-Type変更・差分確認・アップロード
 - ローカルファイルの単体/複数アップロード、ドラッグ&ドロップアップロード
@@ -24,6 +25,7 @@ AWS 認証情報はブラウザに渡しません。localhost の Node.js サー
 - CLI での `list`, `head`, `get`, `show`, `diff`, `edit`, `put`
 - CLI でのオブジェクトコピー
 - 認証期限切れ時の S3 クライアント再作成と1回リトライ
+- AWS S3 のバケットリージョンリダイレクト追従
 - MinIO / MiniStack などの S3 互換エンドポイント対応
 
 ## クイックスタート
@@ -96,6 +98,8 @@ npm run web -- --port 5175
 npm run web -- --bucket your-bucket-name --region ap-northeast-1
 ```
 
+AWS S3 ではバケットごとにリージョンが異なる場合があります。通常は S3 のリージョンリダイレクトに追従しますが、対象バケットのリージョンが分かっている場合は `--region` で固定できます。
+
 Web UI でできること:
 
 | 操作 | 内容 |
@@ -105,6 +109,7 @@ Web UI でできること:
 | Prefix階層表示 | `logs/2026/05/` のようなキーをフォルダ風に辿れます |
 | 一覧表示 | Prefix で絞り込んで S3 オブジェクトを表示します（1000件ごとに追加読み込み） |
 | 一覧フィルタ検索 | 現在読み込まれているオブジェクトを key でローカルに絞り込みます |
+| お気に入り | バケットとオブジェクトをお気に入り登録し、一覧から開いたり不要なものを削除できます |
 | メタデータ確認 | Content-Type、サイズ、ETag、更新日時を表示します |
 | Content-Type編集 | 新規作成・アップロード時の Content-Type を選択または入力できます |
 | ダウンロード | 選択中のオブジェクトをローカルにダウンロードします |
@@ -382,6 +387,16 @@ aws sts get-caller-identity
 ```bash
 aws sts get-caller-identity
 aws s3 ls s3://your-bucket-name/
+```
+
+### 指定 endpoint へ送るように求められる
+
+`The bucket you are attempting to access must be addressed using the specified endpoint.` が出る場合、対象バケットが現在のリージョンとは別リージョンにある可能性があります。
+
+AWS S3 接続時はリージョンリダイレクトに追従します。解消しない場合は、対象バケットのリージョンを確認して `--region` を指定してください。
+
+```bash
+npm run web -- --bucket your-bucket-name --region us-east-1
 ```
 
 ### MinIO ではなく AWS S3 を見たい

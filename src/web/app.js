@@ -2,6 +2,7 @@ const state = {
   config: null,
   buckets: [],
   selectedBucket: null,
+  selectedBucketRegion: null,
   objects: [],
   listTruncated: false,
   listLimit: 1000,
@@ -36,6 +37,10 @@ const elements = {
   prefixForm: document.querySelector("#prefixForm"),
   bucketSearchInput: document.querySelector("#bucketSearchInput"),
   bucketSuggestions: document.querySelector("#bucketSuggestions"),
+  regionInput: document.querySelector("#regionInput"),
+  regionApplyButton: document.querySelector("#regionApplyButton"),
+  regionMatchBucketButton: document.querySelector("#regionMatchBucketButton"),
+  bucketRegionHint: document.querySelector("#bucketRegionHint"),
   prefixInput: document.querySelector("#prefixInput"),
   prefixSuggestions: document.querySelector("#prefixSuggestions"),
   objectFilterInput: document.querySelector("#objectFilterInput"),
@@ -341,13 +346,16 @@ function renderFavoriteList() {
         onOpen: async () => {
           if (state.selectedBucket !== bucket) {
             state.selectedBucket = bucket;
+            state.selectedBucketRegion = null;
             elements.bucketSearchInput.value = bucket;
             elements.prefixInput.value = parentPrefix(key);
             elements.objectFilterInput.value = "";
             renderBucketSuggestions(false);
             renderPrefixSuggestions(false);
             updateConnectionLabel();
+            updateRegionControls();
             clearSelection();
+            await loadSelectedBucketRegion();
             await loadObjects();
           } else {
             elements.prefixInput.value = parentPrefix(key);
@@ -365,7 +373,33 @@ function renderFavoriteList() {
 }
 
 function updateConnectionLabel() {
-  elements.connectionLabel.textContent = `${state.selectedBucket ?? "バケット未選択"} · ${state.config?.endpoint ?? "AWS S3"}`;
+  const endpoint = state.config?.endpoint ?? "AWS S3";
+  const region = state.config?.region ? ` · ${state.config.region}` : "";
+  elements.connectionLabel.textContent = `${state.selectedBucket ?? "バケット未選択"} · ${endpoint}${region}`;
+}
+
+function updateRegionControls() {
+  const currentRegion = state.config?.region ?? "";
+  elements.regionInput.value = currentRegion;
+  elements.regionInput.disabled = !state.config;
+  elements.regionApplyButton.disabled = !state.config;
+  elements.regionMatchBucketButton.disabled = !state.selectedBucketRegion || state.selectedBucketRegion === currentRegion;
+
+  if (!state.selectedBucket) {
+    elements.bucketRegionHint.textContent = "バケット未選択";
+    return;
+  }
+  if (!state.config?.isAwsS3) {
+    elements.bucketRegionHint.textContent = `Custom endpoint region: ${currentRegion || "-"}`;
+    return;
+  }
+  if (!state.selectedBucketRegion) {
+    elements.bucketRegionHint.textContent = "Bucket region: 確認中";
+    return;
+  }
+
+  const suffix = state.selectedBucketRegion === currentRegion ? "" : ` / Current: ${currentRegion || "-"}`;
+  elements.bucketRegionHint.textContent = `Bucket region: ${state.selectedBucketRegion}${suffix}`;
 }
 
 function updateEditorLayout() {
@@ -797,8 +831,34 @@ function renderBucketSearch() {
   renderBucketSuggestions(false);
 }
 
+async function loadSelectedBucketRegion() {
+  if (!state.selectedBucket) {
+    state.selectedBucketRegion = null;
+    updateRegionControls();
+    return;
+  }
+  if (!state.config?.isAwsS3) {
+    state.selectedBucketRegion = state.config?.region ?? null;
+    updateRegionControls();
+    return;
+  }
+
+  state.selectedBucketRegion = null;
+  updateRegionControls();
+  const params = new URLSearchParams({ bucket: state.selectedBucket });
+  const data = await requestJson(`/api/bucket-region?${params.toString()}`);
+  if (state.selectedBucket !== data.bucket) return;
+  state.selectedBucketRegion = data.region ?? null;
+  if (data.currentRegion) {
+    state.config.region = data.currentRegion;
+  }
+  updateConnectionLabel();
+  updateRegionControls();
+}
+
 async function selectBucket(bucket) {
   state.selectedBucket = bucket;
+  state.selectedBucketRegion = null;
   elements.bucketSearchInput.value = bucket;
   elements.prefixInput.value = "";
   elements.objectFilterInput.value = "";
@@ -809,9 +869,11 @@ async function selectBucket(bucket) {
   renderBucketSuggestions(false);
   renderPrefixSuggestions(false);
   updateConnectionLabel();
+  updateRegionControls();
   clearSelection();
   renderObjectList();
   try {
+    await loadSelectedBucketRegion();
     await loadObjects();
     showToast(`バケットを切り替えました: ${state.selectedBucket}`);
   } catch (error) {
@@ -1134,6 +1196,7 @@ async function loadConfig() {
   state.allowWrite = !!state.config.allowWrite;
   state.allowCreateBucket = !!state.config.allowCreateBucket;
   updateConnectionLabel();
+  updateRegionControls();
   updateWriteControls();
   if (state.config.isAwsS3) {
     setWarning("AWS S3 に接続しています。アップロード前に対象キーを確認してください。");
@@ -1153,6 +1216,7 @@ async function loadBuckets() {
   }
   renderBucketSearch();
   updateConnectionLabel();
+  updateRegionControls();
 }
 
 async function loadObjects({ append = false } = {}) {
@@ -1162,6 +1226,7 @@ async function loadObjects({ append = false } = {}) {
     state.listTruncated = false;
     state.listContinuationToken = null;
     renderObjectList();
+    updateRegionControls();
     throw new Error("バケットを選択してください。");
   }
   const params = new URLSearchParams({
@@ -1193,6 +1258,26 @@ async function loadMoreObjects() {
     state.loadingMore = false;
     renderObjectList();
   }
+}
+
+async function switchRegion(region) {
+  const nextRegion = region.trim();
+  if (!nextRegion) {
+    showToast("リージョンを入力してください。", "error");
+    return;
+  }
+  const result = await requestJson("/api/region", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ region: nextRegion }),
+  });
+  state.config.region = result.region;
+  updateConnectionLabel();
+  updateRegionControls();
+  if (state.selectedBucket) {
+    await loadObjects();
+  }
+  showToast(`リージョンを切り替えました: ${result.region}`);
 }
 
 function clearSelection() {
@@ -1691,10 +1776,13 @@ async function createNewBucket() {
   });
 
   state.selectedBucket = bucket;
+  state.selectedBucketRegion = null;
   updateConnectionLabel();
+  updateRegionControls();
   await loadBuckets();
   renderBucketSearch();
   clearSelection();
+  await loadSelectedBucketRegion();
   await loadObjects();
   updateConnectionLabel();
   showToast(`バケットを作成しました: ${bucket}`);
@@ -1749,6 +1837,7 @@ async function boot() {
     loadEnvLayout();
     await loadConfig();
     await loadBuckets();
+    await loadSelectedBucketRegion();
     await loadObjects();
   } catch (error) {
     showToast(error.message, "error");
@@ -1829,8 +1918,34 @@ elements.bucketSearchInput.addEventListener("blur", () => {
   }, 120);
 });
 
+elements.regionApplyButton.addEventListener("click", async () => {
+  try {
+    await switchRegion(elements.regionInput.value);
+  } catch (error) {
+    showToast(error.message, "error");
+    updateRegionControls();
+  }
+});
+
+elements.regionMatchBucketButton.addEventListener("click", async () => {
+  if (!state.selectedBucketRegion) return;
+  try {
+    await switchRegion(state.selectedBucketRegion);
+  } catch (error) {
+    showToast(error.message, "error");
+    updateRegionControls();
+  }
+});
+
+elements.regionInput.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  elements.regionApplyButton.click();
+});
+
 elements.refreshButton.addEventListener("click", async () => {
   try {
+    await loadSelectedBucketRegion();
     await loadObjects();
     showToast("一覧を更新しました。");
   } catch (error) {

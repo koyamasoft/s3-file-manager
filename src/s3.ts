@@ -3,6 +3,8 @@ import {
   CreateBucketCommand,
   GetObjectCommand,
   type GetObjectCommandOutput,
+  GetBucketLocationCommand,
+  type GetBucketLocationCommandOutput,
   HeadObjectCommand,
   type HeadObjectCommandOutput,
   ListBucketsCommand,
@@ -43,6 +45,12 @@ export function createS3Client(config: ToolConfig): S3Client {
       forcePathStyle: config.forcePathStyle,
     }),
   });
+}
+
+function normalizeBucketRegion(region: GetBucketLocationCommandOutput["LocationConstraint"]): string {
+  if (!region) return "us-east-1";
+  if (region === "EU") return "eu-west-1";
+  return String(region);
 }
 
 type BucketRegionError = {
@@ -133,6 +141,16 @@ export async function listObjects(
 export async function listBuckets(client: S3Client): Promise<Bucket[]> {
   const result = await client.send(new ListBucketsCommand({}));
   return result.Buckets ?? [];
+}
+
+export async function getBucketRegion(client: S3Client, bucket: string): Promise<string> {
+  const input = { Bucket: bucket };
+  const result = await sendBucketCommand<GetBucketLocationCommandOutput>(
+    client,
+    new GetBucketLocationCommand(input),
+    () => new GetBucketLocationCommand(input),
+  );
+  return normalizeBucketRegion(result.LocationConstraint);
 }
 
 export async function createBucket(

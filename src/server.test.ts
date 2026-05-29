@@ -231,6 +231,69 @@ test("server recreates the S3 client when the Web UI config is loaded", async ()
   }
 });
 
+test("server returns the selected bucket region", async () => {
+  const options = baseOptions();
+  let requestedBucket = "";
+  const { server, port } = await startTestServer(options, {
+    options,
+    config: baseConfig,
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+      getBucketRegion: async (_client, bucket) => {
+        requestedBucket = bucket;
+        return "us-west-2";
+      },
+    },
+  });
+
+  try {
+    const response = await requestJson(port, "/api/bucket-region?bucket=my-bucket");
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(requestedBucket, "my-bucket");
+    assert.deepEqual(response.json, {
+      bucket: "my-bucket",
+      region: "us-west-2",
+      currentRegion: "ap-northeast-1",
+    });
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("server switches the Web UI S3 region", async () => {
+  const options = baseOptions();
+  const config = { ...baseConfig };
+  let clients = 0;
+  const { server, port } = await startTestServer(options, {
+    options,
+    config,
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => {
+        clients += 1;
+        return fakeClient() as never;
+      },
+    },
+  });
+
+  try {
+    const response = await requestJson(port, "/api/region", {
+      method: "POST",
+      headers: writeHeaders(port),
+      body: JSON.stringify({ region: "us-west-2" }),
+    });
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.json.region, "us-west-2");
+    assert.equal(config.region, "us-west-2");
+    assert.equal(clients, 2);
+  } finally {
+    await closeServer(server);
+  }
+});
+
 test("server requires CSRF token for write-mode changes", async () => {
   const options = baseOptions();
   const { server, port } = await startTestServer(options, {

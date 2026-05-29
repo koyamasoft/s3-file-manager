@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { bucketRegionFromError, copyObject, createS3Client, listObjects } from "./s3.js";
+import { bucketRegionFromError, copyObject, createS3Client, getBucketRegion, listObjects } from "./s3.js";
 
 test("createS3Client follows AWS S3 region redirects for buckets in other regions", () => {
   const client = createS3Client({
@@ -41,6 +41,19 @@ test("bucketRegionFromError extracts the redirect bucket region", () => {
     name: "AuthorizationHeaderMalformed",
     Region: "eu-west-1",
   }), "eu-west-1");
+});
+
+test("getBucketRegion normalizes legacy and default S3 region values", async () => {
+  const locations = [undefined, "EU"];
+  const client = {
+    async send(command: { input: unknown }) {
+      assert.deepEqual(command.input, { Bucket: "bucket" });
+      return { LocationConstraint: locations.shift() };
+    },
+  };
+
+  assert.equal(await getBucketRegion(client as never, "bucket"), "us-east-1");
+  assert.equal(await getBucketRegion(client as never, "bucket"), "eu-west-1");
 });
 
 test("listObjects stops at the requested limit and reports truncation", async () => {

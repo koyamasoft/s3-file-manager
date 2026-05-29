@@ -51,6 +51,17 @@ async function loadWebApp(options: LoadWebAppOptions = {}) {
       if (url.pathname === "/api/buckets") {
         return jsonResponse({ buckets: [{ name: "my-bucket", creationDate: null }] });
       }
+      if (url.pathname === "/api/bucket-region") {
+        return jsonResponse({
+          bucket: url.searchParams.get("bucket"),
+          region: "ap-northeast-1",
+          currentRegion: "ap-northeast-1",
+        });
+      }
+      if (url.pathname === "/api/region") {
+        const body = JSON.parse(String(init?.body));
+        return jsonResponse({ region: body.region });
+      }
       if (url.pathname === "/api/list") {
         return jsonResponse({
           isTruncated: false,
@@ -151,7 +162,7 @@ test("Web UI does not select the first bucket on initial load", async () => {
 
   await waitFor(() => toastMessage(dom) === "バケットを選択してください。");
 
-  assert.equal(dom.window.document.querySelector("#connectionLabel")?.textContent, "バケット未選択 · AWS S3");
+  assert.equal(dom.window.document.querySelector("#connectionLabel")?.textContent, "バケット未選択 · AWS S3 · ap-northeast-1");
   assert.equal((dom.window.document.querySelector<HTMLInputElement>("#bucketSearchInput")?.value), "");
   assert.equal(listRequests, 0);
 });
@@ -187,6 +198,38 @@ test("Web UI keeps error toasts open until another message replaces them", async
 
   dom.window.document.querySelector<HTMLButtonElement>(".toast-close")?.click();
   assert.equal(toast?.classList.contains("hidden"), true);
+});
+
+test("Web UI displays the selected bucket region and switches to it", async () => {
+  const regionRequests: string[] = [];
+  const { dom } = await loadWebApp({
+    fetchHandler: (url, init) => {
+      if (url.pathname === "/api/bucket-region") {
+        return jsonResponse({
+          bucket: url.searchParams.get("bucket"),
+          region: "us-west-2",
+          currentRegion: "ap-northeast-1",
+        });
+      }
+      if (url.pathname === "/api/region") {
+        const body = JSON.parse(String(init?.body));
+        regionRequests.push(body.region);
+        return jsonResponse({ region: body.region });
+      }
+      return null;
+    },
+  });
+
+  await waitFor(() => dom.window.document.querySelector("#bucketRegionHint")?.textContent === "Bucket region: us-west-2 / Current: ap-northeast-1");
+  assert.equal(dom.window.document.querySelector("#connectionLabel")?.textContent, "my-bucket · AWS S3 · ap-northeast-1");
+  assert.equal(dom.window.document.querySelector<HTMLInputElement>("#regionInput")?.value, "ap-northeast-1");
+
+  dom.window.document.querySelector<HTMLButtonElement>("#regionMatchBucketButton")?.click();
+
+  await waitFor(() => dom.window.document.querySelector("#connectionLabel")?.textContent === "my-bucket · AWS S3 · us-west-2");
+  assert.deepEqual(regionRequests, ["us-west-2"]);
+  assert.equal(dom.window.document.querySelector("#bucketRegionHint")?.textContent, "Bucket region: us-west-2");
+  assert.equal(dom.window.document.querySelector<HTMLInputElement>("#regionInput")?.value, "us-west-2");
 });
 
 test("Web UI shows all bucket suggestions when many buckets are available", async () => {

@@ -156,6 +156,18 @@ button:disabled {
   position: relative;
 }
 
+.region-row {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  margin-bottom: 6px;
+}
+
+.region-hint {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 input,
 select {
   min-width: 0;

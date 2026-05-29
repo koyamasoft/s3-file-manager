@@ -14,6 +14,7 @@ import {
   DEFAULT_LIST_OBJECT_LIMIT,
   createS3Client,
   downloadObject,
+  getBucketRegion,
   getObjectForDownload,
   headObject,
   listBuckets,
@@ -39,6 +40,7 @@ type ServerDependencies = {
   copyObject: typeof copyObject;
   createBucket: typeof createBucket;
   downloadObject: typeof downloadObject;
+  getBucketRegion: typeof getBucketRegion;
   getObjectForDownload: typeof getObjectForDownload;
   headObject: typeof headObject;
   listBuckets: typeof listBuckets;
@@ -69,6 +71,7 @@ const defaultDependencies: ServerDependencies = {
   copyObject,
   createBucket,
   downloadObject,
+  getBucketRegion,
   getObjectForDownload,
   headObject,
   listBuckets,
@@ -268,6 +271,12 @@ function contentDispositionAttachment(key: string): string {
   return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(basename(key) || "object")}`;
 }
 
+function assertValidRegion(region: string): void {
+  if (!/^[a-z]{2}(?:-[a-z0-9]+)+-\d$/.test(region)) {
+    throw Object.assign(new Error("region must be a valid AWS region name."), { statusCode: 400 });
+  }
+}
+
 function assertWebObjectSize(contentLength: number | undefined, key: string): void {
   if (isOverWebObjectLimit(contentLength)) {
     throw Object.assign(
@@ -383,6 +392,39 @@ export function createRequestHandler({
           credentialRefreshes,
           clientResets,
           csrfToken,
+        });
+        return;
+      }
+
+      if (requestUrl.pathname === "/api/region") {
+        if (request.method !== "POST") {
+          response.writeHead(405, { Allow: "POST" });
+          response.end();
+          return;
+        }
+
+        const rawBody = await readRequestBody(request);
+        const parsed = JSON.parse(rawBody) as { region?: string };
+        const region = parsed.region?.trim();
+        if (!region) throw new Error("region is required.");
+        assertValidRegion(region);
+        config.region = region;
+        resetS3Client();
+        sendJson(response, 200, { region: config.region });
+        return;
+      }
+
+      if (requestUrl.pathname === "/api/bucket-region") {
+        const bucket = bucketFromRequest(requestUrl, config.bucket ?? "");
+        if (!bucket) throw new Error("bucket is required.");
+        assertValidBucketName(bucket);
+        const region = config.endpoint
+          ? config.region
+          : await withFreshS3(() => deps.getBucketRegion(client, bucket));
+        sendJson(response, 200, {
+          bucket,
+          region,
+          currentRegion: config.region,
         });
         return;
       }

@@ -334,13 +334,15 @@ select {
   width: 100%;
 }
 
-.favorites-panel {
+.favorites-panel,
+.history-panel {
   flex: 0 0 auto;
   border-top: 1px solid var(--line);
   background: var(--panel);
 }
 
-.favorites-panel summary {
+.favorites-panel summary,
+.history-panel summary {
   min-height: 40px;
   padding: 10px 20px;
   cursor: pointer;
@@ -351,21 +353,25 @@ select {
   text-transform: uppercase;
 }
 
-.favorite-list {
+.favorite-list,
+.history-list {
   max-height: 260px;
   overflow: auto;
   border-top: 1px solid var(--line);
 }
 
-.favorite-list-section {
+.favorite-list-section,
+.manager-list-section {
   padding: 10px 12px 12px;
 }
 
-.favorite-list-section + .favorite-list-section {
+.favorite-list-section + .favorite-list-section,
+.manager-list-section + .manager-list-section {
   border-top: 1px solid var(--line);
 }
 
-.favorite-list-section h3 {
+.favorite-list-section h3,
+.manager-list-section h3 {
   margin: 0 0 8px;
   color: var(--muted);
   font-size: 11px;
@@ -373,7 +379,8 @@ select {
   text-transform: uppercase;
 }
 
-.favorite-list-section ul {
+.favorite-list-section ul,
+.manager-list-section ul {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -381,7 +388,8 @@ select {
   gap: 6px;
 }
 
-.favorite-list-section li {
+.favorite-list-section li,
+.manager-list-section li {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 32px;
   border: 1px solid var(--line);
@@ -389,7 +397,8 @@ select {
   overflow: hidden;
 }
 
-.favorite-list-open {
+.favorite-list-open,
+.manager-list-open {
   min-height: 40px;
   padding: 7px 9px;
   border: 0;
@@ -399,28 +408,34 @@ select {
   text-align: left;
 }
 
-.favorite-list-open:hover {
+.favorite-list-open:hover,
+.manager-list-open:hover {
   background: #e8f2ef;
 }
 
 .favorite-list-name,
-.favorite-list-meta {
+.favorite-list-meta,
+.manager-list-name,
+.manager-list-meta {
   display: block;
   overflow-wrap: anywhere;
 }
 
-.favorite-list-name {
+.favorite-list-name,
+.manager-list-name {
   font-size: 12px;
   font-weight: 700;
 }
 
-.favorite-list-meta {
+.favorite-list-meta,
+.manager-list-meta {
   margin-top: 2px;
   color: var(--muted);
   font-size: 11px;
 }
 
-.favorite-list-remove {
+.favorite-list-remove,
+.manager-list-remove {
   min-height: 40px;
   padding: 0;
   border: 0;
@@ -430,11 +445,13 @@ select {
   color: var(--danger);
 }
 
-.favorite-list-remove:hover {
+.favorite-list-remove:hover,
+.manager-list-remove:hover {
   background: #fff0f0;
 }
 
-.favorite-list-empty {
+.favorite-list-empty,
+.manager-list-empty {
   margin: 0;
   color: var(--muted);
   font-size: 12px;

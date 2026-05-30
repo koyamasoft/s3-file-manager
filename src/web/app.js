@@ -24,6 +24,8 @@ const state = {
   uploadProgress: null,
   favoriteBuckets: new Set(),
   favoriteObjects: {},
+  bucketHistory: [],
+  prefixHistory: {},
   envKeyWidth: 260,
 };
 
@@ -49,6 +51,7 @@ const elements = {
   loadMoreRow: document.querySelector("#loadMoreRow"),
   loadMoreButton: document.querySelector("#loadMoreButton"),
   favoriteList: document.querySelector("#favoriteList"),
+  historyList: document.querySelector("#historyList"),
   selectedKey: document.querySelector("#selectedKey"),
   modeBadge: document.querySelector("#modeBadge"),
   warningBanner: document.querySelector("#warningBanner"),
@@ -153,7 +156,7 @@ function writeJsonStorage(key, value) {
   try {
     window.localStorage?.setItem(key, JSON.stringify(value));
   } catch {
-    showToast("お気に入りを保存できませんでした。", "error");
+    showToast("ローカル設定を保存できませんでした。", "error");
   }
 }
 
@@ -170,6 +173,12 @@ function loadFavorites() {
   state.favoriteBuckets = new Set(readJsonStorage("s3fm.favoriteBuckets", []));
   state.favoriteObjects = readJsonStorage("s3fm.favoriteObjects", {});
   renderFavoriteList();
+}
+
+function loadHistory() {
+  state.bucketHistory = readStringArrayStorage("s3fm.bucketHistory");
+  state.prefixHistory = readRecordOfStringArraysStorage("s3fm.prefixHistory");
+  renderHistoryList();
 }
 
 function loadEnvLayout() {
@@ -208,6 +217,57 @@ function saveFavoriteObjects(bucket, favorites) {
     delete state.favoriteObjects[bucket];
   }
   writeJsonStorage("s3fm.favoriteObjects", state.favoriteObjects);
+}
+
+function readStringArrayStorage(key) {
+  const value = readJsonStorage(key, []);
+  return Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
+}
+
+function readRecordOfStringArraysStorage(key) {
+  const value = readJsonStorage(key, {});
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([bucket, prefixes]) => typeof bucket === "string" && Array.isArray(prefixes))
+      .map(([bucket, prefixes]) => [bucket, prefixes.filter((prefix) => typeof prefix === "string")]),
+  );
+}
+
+function historyValuesWith(value, values, limit = 10) {
+  return [value, ...values.filter((item) => item !== value)].slice(0, limit);
+}
+
+function saveBucketHistory() {
+  writeJsonStorage("s3fm.bucketHistory", state.bucketHistory);
+}
+
+function savePrefixHistory() {
+  writeJsonStorage("s3fm.prefixHistory", state.prefixHistory);
+}
+
+function rememberBucket(bucket = state.selectedBucket) {
+  if (!bucket) return;
+  state.bucketHistory = historyValuesWith(bucket, state.bucketHistory);
+  saveBucketHistory();
+  renderHistoryList();
+}
+
+function rememberPrefix(bucket = state.selectedBucket, prefix = currentPrefix()) {
+  if (!bucket || !prefix) return;
+  const normalized = prefix.endsWith("/") ? prefix : `${prefix}/`;
+  const values = readStringArrayFromRecord(state.prefixHistory, bucket);
+  state.prefixHistory = {
+    ...state.prefixHistory,
+    [bucket]: historyValuesWith(normalized, values),
+  };
+  savePrefixHistory();
+  renderHistoryList();
+}
+
+function readStringArrayFromRecord(record, key) {
+  const values = record[key];
+  return Array.isArray(values) ? values.filter((item) => typeof item === "string") : [];
 }
 
 function isFavoriteBucket(bucket) {
@@ -315,6 +375,36 @@ function favoriteListItem({ label, meta, onOpen, onRemove }) {
   return item;
 }
 
+function managerListItem({ label, meta, removeLabel, onOpen, onRemove }) {
+  const item = document.createElement("li");
+
+  const open = document.createElement("button");
+  open.type = "button";
+  open.className = "manager-list-open";
+  open.addEventListener("click", onOpen);
+
+  const name = document.createElement("span");
+  name.className = "manager-list-name";
+  name.textContent = label;
+
+  const detail = document.createElement("span");
+  detail.className = "manager-list-meta";
+  detail.textContent = meta;
+
+  open.append(name, detail);
+
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "manager-list-remove";
+  remove.title = removeLabel;
+  remove.setAttribute("aria-label", removeLabel);
+  remove.textContent = "×";
+  remove.addEventListener("click", onRemove);
+
+  item.append(open, remove);
+  return item;
+}
+
 function renderFavoriteList() {
   if (!elements.favoriteList) return;
   elements.favoriteList.replaceChildren();
@@ -370,6 +460,108 @@ function renderFavoriteList() {
 
   appendFavoriteListSection("Buckets", bucketItems);
   appendFavoriteListSection("Objects", objectItems);
+}
+
+function appendManagerListSection(container, title, items) {
+  const section = document.createElement("section");
+  section.className = "manager-list-section";
+
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  section.append(heading);
+
+  if (items.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "manager-list-empty";
+    empty.textContent = "なし";
+    section.append(empty);
+  } else {
+    const list = document.createElement("ul");
+    for (const item of items) {
+      list.append(item);
+    }
+    section.append(list);
+  }
+
+  container.append(section);
+}
+
+function removePrefixHistory(bucket, prefix) {
+  const values = readStringArrayFromRecord(state.prefixHistory, bucket).filter((item) => item !== prefix);
+  state.prefixHistory = { ...state.prefixHistory };
+  if (values.length > 0) {
+    state.prefixHistory[bucket] = values;
+  } else {
+    delete state.prefixHistory[bucket];
+  }
+  savePrefixHistory();
+  renderHistoryList();
+  showToast(`履歴から削除しました: ${prefix}`);
+}
+
+async function openPrefixHistory(bucket, prefix) {
+  state.selectedBucket = bucket;
+  state.selectedBucketRegion = null;
+  elements.bucketSearchInput.value = bucket;
+  elements.prefixInput.value = prefix;
+  elements.objectFilterInput.value = "";
+  state.objects = [];
+  state.listTruncated = false;
+  state.listContinuationToken = null;
+  state.loadingMore = false;
+  renderBucketSuggestions(false);
+  renderPrefixSuggestions(false);
+  updateConnectionLabel();
+  updateRegionControls();
+  clearSelection();
+  renderObjectList();
+
+  try {
+    await loadSelectedBucketRegion();
+    await loadObjects();
+    showToast(`Prefixを開きました: ${prefix}`);
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
+function renderHistoryList() {
+  if (!elements.historyList) return;
+  elements.historyList.replaceChildren();
+
+  const bucketItems = state.bucketHistory.map((bucket) =>
+    managerListItem({
+      label: bucket,
+      meta: "Bucket",
+      removeLabel: `${bucket} を履歴から削除`,
+      onOpen: () => {
+        selectBucket(bucket);
+      },
+      onRemove: () => {
+        state.bucketHistory = state.bucketHistory.filter((item) => item !== bucket);
+        saveBucketHistory();
+        renderHistoryList();
+        showToast(`履歴から削除しました: ${bucket}`);
+      },
+    })
+  );
+
+  const prefixItems = Object.entries(state.prefixHistory)
+    .flatMap(([bucket]) => readStringArrayFromRecord(state.prefixHistory, bucket).map((prefix) => ({ bucket, prefix })))
+    .map(({ bucket, prefix }) =>
+      managerListItem({
+        label: prefix,
+        meta: bucket,
+        removeLabel: `${prefix} を履歴から削除`,
+        onOpen: () => {
+          openPrefixHistory(bucket, prefix);
+        },
+        onRemove: () => removePrefixHistory(bucket, prefix),
+      })
+    );
+
+  appendManagerListSection(elements.historyList, "Buckets", bucketItems);
+  appendManagerListSection(elements.historyList, "Prefixes", prefixItems);
 }
 
 function updateConnectionLabel() {
@@ -1250,6 +1442,10 @@ async function loadObjects({ append = false } = {}) {
   state.listTruncated = !!data.isTruncated;
   state.listLimit = data.limit ?? 1000;
   state.listContinuationToken = data.nextContinuationToken ?? null;
+  if (!append) {
+    rememberBucket();
+    rememberPrefix();
+  }
   renderObjectList();
   renderPrefixSuggestions(false);
   if (!append && state.listTruncated) {
@@ -1843,6 +2039,7 @@ function setDragActive(active) {
 async function boot() {
   try {
     loadFavorites();
+    loadHistory();
     loadEnvLayout();
     await loadConfig();
     await loadBuckets();

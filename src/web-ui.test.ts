@@ -443,6 +443,44 @@ test("Web UI lists favorites and removes them from the manager", async () => {
   assert.deepEqual(JSON.parse(dom.window.localStorage.getItem("s3fm.favoriteObjects") ?? "{}"), {});
 });
 
+test("Web UI stores bucket and prefix history and opens or removes entries", async () => {
+  const { dom } = await loadWebApp();
+
+  assert.deepEqual(JSON.parse(dom.window.localStorage.getItem("s3fm.bucketHistory") ?? "[]"), ["my-bucket"]);
+
+  const imagesButton = [...dom.window.document.querySelectorAll<HTMLButtonElement>("#objectList .prefix-folder")]
+    .find((button) => button.textContent?.includes("images/"));
+  assert.ok(imagesButton);
+  imagesButton.click();
+
+  await waitFor(() => {
+    const stored = JSON.parse(dom.window.localStorage.getItem("s3fm.prefixHistory") ?? "{}");
+    return stored["my-bucket"]?.[0] === "images/";
+  });
+  assert.deepEqual(
+    JSON.parse(dom.window.localStorage.getItem("s3fm.prefixHistory") ?? "{}"),
+    { "my-bucket": ["images/"] },
+  );
+
+  const upButton = dom.window.document.querySelector<HTMLButtonElement>("#objectList .prefix-up");
+  assert.ok(upButton);
+  upButton.click();
+  await waitFor(() => dom.window.document.querySelector<HTMLInputElement>("#prefixInput")?.value === "");
+
+  const prefixHistoryButton = [...dom.window.document.querySelectorAll<HTMLButtonElement>("#historyList .manager-list-open")]
+    .find((button) => button.textContent?.includes("images/"));
+  assert.ok(prefixHistoryButton);
+  prefixHistoryButton.click();
+  await waitFor(() => dom.window.document.querySelector<HTMLInputElement>("#prefixInput")?.value === "images/");
+
+  const removeButton = [...dom.window.document.querySelectorAll<HTMLButtonElement>("#historyList .manager-list-remove")]
+    .find((button) => button.getAttribute("aria-label")?.includes("images/"));
+  assert.ok(removeButton);
+  removeButton.click();
+
+  assert.deepEqual(JSON.parse(dom.window.localStorage.getItem("s3fm.prefixHistory") ?? "{}"), {});
+});
+
 test("Web UI resizes and stores the env key column width", async () => {
   const { dom } = await loadWebApp({
     waitForObjects: false,

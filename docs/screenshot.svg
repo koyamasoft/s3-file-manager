@@ -55,18 +55,23 @@
   <text x="68" y="649" fill="#17202A" font-family="Arial, sans-serif" font-size="14">logs/2026/app.log</text>
   <text x="68" y="667" fill="#667085" font-family="Arial, sans-serif" font-size="12">9.8 KiB · 2026-05-15T12:20:01.000Z</text>
 
-  <rect x="0.5" y="684.5" width="359" height="215" fill="#FFFFFF" stroke="#D8DEE8"/>
+  <rect x="0.5" y="684.5" width="359" height="116" fill="#FFFFFF" stroke="#D8DEE8"/>
   <text x="28" y="713" fill="#667085" font-family="Arial, sans-serif" font-size="13" font-weight="700">お気に入り</text>
   <line x1="0" y1="728.5" x2="360" y2="728.5" stroke="#D8DEE8"/>
-  <text x="28" y="756" fill="#667085" font-family="Arial, sans-serif" font-size="12" font-weight="700">BUCKETS</text>
-  <rect x="20.5" y="769.5" width="319" height="42" rx="7" fill="#FFFFFF" stroke="#D8DEE8"/>
-  <text x="34" y="795" fill="#17202A" font-family="Arial, sans-serif" font-size="13" font-weight="700">example-assets-bucket</text>
-  <text x="318" y="795" text-anchor="middle" fill="#9F2A2A" font-family="Arial, sans-serif" font-size="18">×</text>
-  <text x="28" y="836" fill="#667085" font-family="Arial, sans-serif" font-size="12" font-weight="700">OBJECTS</text>
-  <rect x="20.5" y="849.5" width="319" height="42" rx="7" fill="#FFFDF5" stroke="#D8DEE8"/>
-  <text x="34" y="874" fill="#17202A" font-family="Arial, sans-serif" font-size="13" font-weight="700">logs/2026/app.env</text>
-  <text x="236" y="874" fill="#667085" font-family="Arial, sans-serif" font-size="11">example-assets</text>
-  <text x="318" y="874" text-anchor="middle" fill="#9F2A2A" font-family="Arial, sans-serif" font-size="18">×</text>
+  <text x="28" y="756" fill="#667085" font-family="Arial, sans-serif" font-size="12" font-weight="700">OBJECTS</text>
+  <rect x="20.5" y="769.5" width="319" height="42" rx="7" fill="#FFFDF5" stroke="#D8DEE8"/>
+  <text x="34" y="794" fill="#17202A" font-family="Arial, sans-serif" font-size="13" font-weight="700">logs/2026/app.env</text>
+  <text x="236" y="794" fill="#667085" font-family="Arial, sans-serif" font-size="11">example-assets</text>
+  <text x="318" y="794" text-anchor="middle" fill="#9F2A2A" font-family="Arial, sans-serif" font-size="18">×</text>
+
+  <rect x="0.5" y="800.5" width="359" height="99" fill="#FFFFFF" stroke="#D8DEE8"/>
+  <text x="28" y="829" fill="#667085" font-family="Arial, sans-serif" font-size="13" font-weight="700">履歴</text>
+  <line x1="0" y1="844.5" x2="360" y2="844.5" stroke="#D8DEE8"/>
+  <text x="28" y="866" fill="#667085" font-family="Arial, sans-serif" font-size="12" font-weight="700">PREFIXES</text>
+  <rect x="20.5" y="873.5" width="319" height="24" rx="6" fill="#FFFFFF" stroke="#D8DEE8"/>
+  <text x="34" y="891" fill="#17202A" font-family="Arial, sans-serif" font-size="12" font-weight="700">logs/2026/</text>
+  <text x="172" y="891" fill="#667085" font-family="Arial, sans-serif" font-size="11">example-assets-bucket</text>
+  <text x="318" y="891" text-anchor="middle" fill="#9F2A2A" font-family="Arial, sans-serif" font-size="16">×</text>
 
   <rect x="360" y="0.5" width="1079.5" height="88" fill="#FFFFFF" stroke="#D8DEE8"/>
   <rect x="382" y="24" width="54" height="28" rx="14" fill="#DFF3EC"/>
@@ -149,4 +154,10 @@
   <text x="412" y="704" fill="#EDF6F9" font-family="Menlo, Consolas, monospace" font-size="14">  AWS_REGION=ap-northeast-1</text>
   <text x="412" y="730" fill="#EDF6F9" font-family="Menlo, Consolas, monospace" font-size="14">- APP_NAME="old app"</text>
   <text x="412" y="756" fill="#EDF6F9" font-family="Menlo, Consolas, monospace" font-size="14">+ APP_NAME="S3 File Manager"</text>
+
+  <rect x="860" y="826" width="500" height="52" rx="8" fill="#9F2A2A"/>
+  <text x="884" y="857" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="14">リージョンが異なります。バケットのリージョンは us-west-2 です。</text>
+  <rect x="1196" y="837" width="100" height="30" rx="7" fill="#FFFFFF" fill-opacity="0.16" stroke="#FFFFFF" stroke-opacity="0.55"/>
+  <text x="1246" y="857" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="13" font-weight="700">us-west-2に切替</text>
+  <text x="1332" y="858" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="18">×</text>
 </svg>

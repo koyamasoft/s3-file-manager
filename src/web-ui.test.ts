@@ -233,6 +233,47 @@ test("Web UI displays the selected bucket region and switches to it", async () =
   assert.equal(dom.window.document.querySelector<HTMLInputElement>("#regionInput")?.value, "us-west-2");
 });
 
+test("Web UI offers a region switch action for bucket region mismatch errors", async () => {
+  const regionRequests: string[] = [];
+  let listRequests = 0;
+  const { dom } = await loadWebApp({
+    waitForObjects: false,
+    fetchHandler: (url, init) => {
+      if (url.pathname === "/api/list") {
+        listRequests += 1;
+        if (listRequests === 1) {
+          return jsonResponse({
+            error: "The bucket must be addressed using the specified endpoint.",
+            code: "BucketRegionMismatch",
+            bucketRegion: "us-west-2",
+            currentRegion: "ap-northeast-1",
+          }, 500);
+        }
+        return jsonResponse({
+          isTruncated: false,
+          nextContinuationToken: null,
+          limit: 1000,
+          objects,
+        });
+      }
+      if (url.pathname === "/api/region") {
+        const body = JSON.parse(String(init?.body));
+        regionRequests.push(body.region);
+        return jsonResponse({ region: body.region });
+      }
+      return null;
+    },
+  });
+
+  await waitFor(() => dom.window.document.querySelector(".toast-action")?.textContent === "us-west-2 に切替");
+
+  dom.window.document.querySelector<HTMLButtonElement>(".toast-action")?.click();
+
+  await waitFor(() => dom.window.document.querySelector("#connectionLabel")?.textContent === "my-bucket · AWS S3 · us-west-2");
+  assert.deepEqual(regionRequests, ["us-west-2"]);
+  assert.equal(dom.window.document.querySelector("#objectCount")?.textContent, "3");
+});
+
 test("Web UI shows all bucket suggestions when many buckets are available", async () => {
   const buckets = Array.from({ length: 25 }, (_, index) => ({
     name: `bucket-${String(index + 1).padStart(2, "0")}`,

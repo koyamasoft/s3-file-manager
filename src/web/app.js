@@ -90,12 +90,21 @@ function formatBytes(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
 }
 
-function showToast(message, type = "info") {
+function showToast(message, type = "info", action = null) {
   elements.toast.textContent = "";
   const messageElement = document.createElement("span");
   messageElement.className = "toast-message";
   messageElement.textContent = message;
   elements.toast.append(messageElement);
+
+  if (action) {
+    const actionButton = document.createElement("button");
+    actionButton.className = "toast-action";
+    actionButton.type = "button";
+    actionButton.textContent = action.label;
+    actionButton.addEventListener("click", action.onClick);
+    elements.toast.append(actionButton);
+  }
 
   if (type === "error") {
     const closeButton = document.createElement("button");
@@ -150,6 +159,36 @@ function readJsonStorage(key, fallback) {
   } catch {
     return fallback;
   }
+}
+
+function isRegionMismatchError(error) {
+  return state.config?.isAwsS3 &&
+    typeof error?.payload?.bucketRegion === "string" &&
+    error.payload.bucketRegion &&
+    error.payload.bucketRegion !== state.config?.region;
+}
+
+function showErrorToast(error) {
+  if (!isRegionMismatchError(error)) {
+    showToast(error instanceof Error ? error.message : String(error), "error");
+    return;
+  }
+
+  const region = error.payload.bucketRegion;
+  showToast(
+    `${error.message} バケットのリージョンは ${region} です。`,
+    "error",
+    {
+      label: `${region} に切替`,
+      onClick: async () => {
+        try {
+          await switchRegion(region);
+        } catch (switchError) {
+          showErrorToast(switchError);
+        }
+      },
+    },
+  );
 }
 
 function writeJsonStorage(key, value) {
@@ -521,7 +560,7 @@ async function openPrefixHistory(bucket, prefix) {
     await loadObjects();
     showToast(`Prefixを開きました: ${prefix}`);
   } catch (error) {
-    showToast(error.message, "error");
+    showErrorToast(error);
   }
 }
 
@@ -882,7 +921,7 @@ function renderObjectList() {
       favorite: true,
       onFavorite: () => toggleFavoriteObject(object.key),
       onClick: () => {
-        openObject(object.key).catch((error) => showToast(error.message, "error"));
+        openObject(object.key).catch((error) => showErrorToast(error));
       },
     });
   }
@@ -906,7 +945,7 @@ function renderObjectList() {
       favorite,
       onFavorite: () => toggleFavoriteObject(object.key),
       onClick: () => {
-        openObject(object.key).catch((error) => showToast(error.message, "error"));
+        openObject(object.key).catch((error) => showErrorToast(error));
       },
     });
   }
@@ -1023,7 +1062,7 @@ async function selectPrefix(prefix) {
     await loadObjects();
     showToast(`Prefixを切り替えました: ${prefix || "(empty)"}`);
   } catch (error) {
-    showToast(error.message, "error");
+    showErrorToast(error);
   }
 }
 
@@ -1078,7 +1117,7 @@ async function selectBucket(bucket) {
     await loadObjects();
     showToast(`バケットを切り替えました: ${state.selectedBucket}`);
   } catch (error) {
-    showToast(error.message, "error");
+    showErrorToast(error);
   }
 }
 
@@ -2046,7 +2085,7 @@ async function boot() {
     await loadSelectedBucketRegion();
     await loadObjects();
   } catch (error) {
-    showToast(error.message, "error");
+    showErrorToast(error);
   }
 }
 
@@ -2056,7 +2095,7 @@ elements.prefixForm.addEventListener("submit", async (event) => {
   try {
     await loadObjects();
   } catch (error) {
-    showToast(error.message, "error");
+    showErrorToast(error);
   }
 });
 
@@ -2128,7 +2167,7 @@ elements.regionApplyButton.addEventListener("click", async () => {
   try {
     await switchRegion(elements.regionInput.value);
   } catch (error) {
-    showToast(error.message, "error");
+    showErrorToast(error);
     updateRegionControls();
   }
 });
@@ -2138,7 +2177,7 @@ elements.regionMatchBucketButton.addEventListener("click", async () => {
   try {
     await switchRegion(state.selectedBucketRegion);
   } catch (error) {
-    showToast(error.message, "error");
+    showErrorToast(error);
     updateRegionControls();
   }
 });
@@ -2155,7 +2194,7 @@ elements.refreshButton.addEventListener("click", async () => {
     await loadObjects();
     showToast("一覧を更新しました。");
   } catch (error) {
-    showToast(error.message, "error");
+    showErrorToast(error);
   }
 });
 
@@ -2163,7 +2202,7 @@ elements.loadMoreButton.addEventListener("click", async () => {
   try {
     await loadMoreObjects();
   } catch (error) {
-    showToast(error.message, "error");
+    showErrorToast(error);
   }
 });
 
@@ -2185,7 +2224,7 @@ elements.copyObjectButton.addEventListener("click", async () => {
   try {
     await copySelectedObject();
   } catch (error) {
-    showToast(error.message, "error");
+    showErrorToast(error);
   }
 });
 
@@ -2204,7 +2243,7 @@ elements.uploadFileButton.addEventListener("click", () => {
 elements.uploadFileInput.addEventListener("change", () => {
   const files = [...(elements.uploadFileInput.files ?? [])];
   elements.uploadFileInput.value = "";
-  uploadMultipleFiles(files).catch((error) => showToast(error.message, "error"));
+  uploadMultipleFiles(files).catch((error) => showErrorToast(error));
 });
 
 document.addEventListener("dragenter", (event) => {
@@ -2242,13 +2281,13 @@ document.addEventListener("drop", (event) => {
   }
 
   const files = droppedFiles(event);
-  uploadMultipleFiles(files, { direct: true }).catch((error) => showToast(error.message, "error"));
+  uploadMultipleFiles(files, { direct: true }).catch((error) => showErrorToast(error));
 });
 elements.newBucketButton.addEventListener("click", async () => {
   try {
     await createNewBucket();
   } catch (error) {
-    showToast(error.message, "error");
+    showErrorToast(error);
   }
 });
 
@@ -2266,7 +2305,7 @@ elements.writeModeButton.addEventListener("click", async () => {
   try {
     await setWriteMode(nextAllowWrite);
   } catch (error) {
-    showToast(error.message, "error");
+    showErrorToast(error);
   }
 });
 
@@ -2296,7 +2335,7 @@ elements.saveButton.addEventListener("click", async () => {
   try {
     await saveObject(false);
   } catch (error) {
-    showToast(error.message, "error");
+    showErrorToast(error);
   }
 });
 

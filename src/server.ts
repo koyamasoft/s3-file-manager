@@ -12,6 +12,7 @@ import {
   copyObject,
   createBucket,
   DEFAULT_LIST_OBJECT_LIMIT,
+  bucketRegionFromError,
   createS3Client,
   downloadObject,
   getBucketRegion,
@@ -143,12 +144,18 @@ function sendJson(response: ServerResponse, status: number, body: JsonValue): vo
   response.end(JSON.stringify(body));
 }
 
-function sendError(response: ServerResponse, status: number, error: unknown): void {
+function sendError(response: ServerResponse, status: number, error: unknown, config?: ToolConfig): void {
   const statusCode = typeof (error as { statusCode?: unknown })?.statusCode === "number"
     ? (error as { statusCode: number }).statusCode
     : status;
+  const bucketRegion = config?.endpoint ? undefined : bucketRegionFromError(error);
   sendJson(response, statusCode, {
     error: error instanceof Error ? error.message : String(error),
+    ...(bucketRegion && bucketRegion !== config?.region && {
+      code: "BucketRegionMismatch",
+      bucketRegion,
+      currentRegion: config?.region ?? null,
+    }),
   });
 }
 
@@ -713,7 +720,7 @@ export function createRequestHandler({
 
       serveStatic(requestUrl, response);
     } catch (error) {
-      sendError(response, 500, error);
+      sendError(response, 500, error, config);
     }
   };
 }

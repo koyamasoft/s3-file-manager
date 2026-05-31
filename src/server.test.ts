@@ -294,6 +294,39 @@ test("server switches the Web UI S3 region", async () => {
   }
 });
 
+test("server includes bucket region guidance for S3 region mismatch errors", async () => {
+  const options = baseOptions();
+  const { server, port } = await startTestServer(options, {
+    options,
+    config: { ...baseConfig, bucket: "my-bucket" },
+    csrfToken: "test-token",
+    dependencies: {
+      createS3Client: () => fakeClient() as never,
+      listObjects: async () => {
+        throw Object.assign(new Error("The bucket must be addressed using the specified endpoint."), {
+          name: "PermanentRedirect",
+          $metadata: {
+            httpHeaders: {
+              "x-amz-bucket-region": "us-west-2",
+            },
+          },
+        });
+      },
+    },
+  });
+
+  try {
+    const response = await requestJson(port, "/api/list?bucket=my-bucket");
+
+    assert.equal(response.statusCode, 500);
+    assert.equal(response.json.code, "BucketRegionMismatch");
+    assert.equal(response.json.bucketRegion, "us-west-2");
+    assert.equal(response.json.currentRegion, "ap-northeast-1");
+  } finally {
+    await closeServer(server);
+  }
+});
+
 test("server requires CSRF token for write-mode changes", async () => {
   const options = baseOptions();
   const { server, port } = await startTestServer(options, {

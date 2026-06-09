@@ -451,6 +451,7 @@ select {
 
 .favorites-panel summary,
 .history-panel summary {
+  position: relative;
   min-height: 40px;
   padding: 10px 14px;
   cursor: pointer;
@@ -459,6 +460,24 @@ select {
   font-weight: 700;
   letter-spacing: 0;
   text-transform: uppercase;
+}
+
+.favorites-panel[open] summary,
+.history-panel[open] summary {
+  background: #e8f2ef;
+  color: var(--accent-strong);
+}
+
+.favorites-panel[open] summary::after,
+.history-panel[open] summary::after {
+  position: absolute;
+  right: 14px;
+  bottom: 0;
+  left: 14px;
+  height: 3px;
+  border-radius: 999px 999px 0 0;
+  background: var(--accent);
+  content: "";
 }
 
 .favorite-list,

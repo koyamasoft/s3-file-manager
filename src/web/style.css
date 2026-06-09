@@ -135,16 +135,52 @@ button:disabled {
   overflow: hidden;
 }
 
-.prefix-form {
+.connection-panel {
   flex: 0 0 auto;
-  padding: 12px 20px;
   border-bottom: 1px solid var(--line);
+}
+
+.connection-panel > summary {
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 10px 20px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  list-style: none;
+  text-transform: uppercase;
+}
+
+.connection-panel > summary::marker {
+  content: "";
+}
+
+.connection-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.connection-panel > summary::after {
+  content: "　表示";
+  color: var(--muted);
+  font-weight: 500;
+  text-transform: none;
+}
+
+.connection-panel[open] > summary::after {
+  content: "　非表示";
+}
+
+.prefix-form {
+  padding: 0 20px 12px;
 }
 
 .prefix-form label,
 .object-list-header {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0;
   text-transform: uppercase;
@@ -166,13 +202,19 @@ button:disabled {
 }
 
 .region-panel summary {
+  display: flex;
+  align-items: center;
   color: var(--muted);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0;
   list-style: none;
   text-transform: uppercase;
+}
+
+.region-panel summary::marker {
+  content: "";
 }
 
 .region-panel summary::-webkit-details-marker {
@@ -180,14 +222,14 @@ button:disabled {
 }
 
 .region-panel summary::after {
-  content: " 表示";
+  content: "　表示";
   color: var(--muted);
   font-weight: 500;
   text-transform: none;
 }
 
 .region-panel[open] summary::after {
-  content: " 非表示";
+  content: "　非表示";
 }
 
 .region-row {
@@ -198,7 +240,7 @@ button:disabled {
 .region-hint {
   margin: 0 0 10px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   overflow-wrap: anywhere;
 }
 
@@ -207,10 +249,17 @@ select {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 6px;
-  min-height: 36px;
+  min-height: 34px;
   padding: 0 10px;
   background: #fff;
   color: var(--text);
+  font-size: 14px;
+}
+
+.prefix-form button {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 14px;
 }
 
 .bucket-row {
@@ -306,7 +355,43 @@ select {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   border-bottom: 1px solid var(--line);
+}
+
+.object-list-header-actions {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.object-sort {
+  display: inline-grid;
+  grid-template-columns: repeat(2, auto);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.object-sort button {
+  min-height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.object-sort button + button {
+  border-left: 1px solid var(--line);
+}
+
+.object-sort button.active {
+  background: #e8f2ef;
+  color: var(--accent-strong);
 }
 
 .object-filter-row {
@@ -355,6 +440,7 @@ select {
 
 .favorites-panel,
 .history-panel {
+  position: relative;
   min-width: 0;
   background: var(--panel);
 }
@@ -377,6 +463,10 @@ select {
 
 .favorite-list,
 .history-list {
+  position: absolute;
+  bottom: 40px;
+  left: 0;
+  z-index: 1;
   width: 200%;
   max-height: min(340px, calc(100vh - 220px));
   overflow: auto;
@@ -386,7 +476,7 @@ select {
 }
 
 .history-list {
-  margin-left: -100%;
+  left: -100%;
 }
 
 .favorite-list-section,
@@ -1034,9 +1124,11 @@ pre {
 
   .favorite-list,
   .history-list {
+    position: static;
+    left: auto;
+    bottom: auto;
     width: 100%;
     max-height: 220px;
-    margin-left: 0;
   }
 
   .workspace {

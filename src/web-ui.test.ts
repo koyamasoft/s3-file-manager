@@ -163,6 +163,7 @@ test("Web UI does not select the first bucket on initial load", async () => {
   await waitFor(() => toastMessage(dom) === "バケットを選択してください。");
 
   assert.equal(dom.window.document.querySelector("#connectionLabel")?.textContent, "バケット未選択 · AWS S3 · ap-northeast-1");
+  assert.equal(dom.window.document.querySelector<HTMLDetailsElement>("#connectionPanel")?.open, true);
   assert.equal((dom.window.document.querySelector<HTMLInputElement>("#bucketSearchInput")?.value), "");
   assert.equal(listRequests, 0);
 });
@@ -221,6 +222,7 @@ test("Web UI displays the selected bucket region and switches to it", async () =
   });
 
   await waitFor(() => dom.window.document.querySelector("#bucketRegionHint")?.textContent === "Bucket region: us-west-2 / Current: ap-northeast-1");
+  assert.equal(dom.window.document.querySelector<HTMLDetailsElement>("#connectionPanel")?.open, true);
   assert.equal(dom.window.document.querySelector("#connectionLabel")?.textContent, "my-bucket · AWS S3 · ap-northeast-1");
   assert.equal(dom.window.document.querySelector<HTMLInputElement>("#regionInput")?.value, "ap-northeast-1");
   assert.equal(dom.window.document.querySelector<HTMLDetailsElement>("#regionPanel")?.open, false);
@@ -431,6 +433,21 @@ test("Web UI stores favorite objects and sorts them first", async () => {
   );
 });
 
+test("Web UI keeps connection settings collapsed while navigating object prefixes", async () => {
+  const { dom } = await loadWebApp();
+  const panel = dom.window.document.querySelector<HTMLDetailsElement>("#connectionPanel");
+  assert.ok(panel);
+  panel.open = false;
+
+  const imagesButton = [...dom.window.document.querySelectorAll<HTMLButtonElement>("#objectList .prefix-folder")]
+    .find((button) => button.textContent?.includes("images/"));
+  assert.ok(imagesButton);
+  imagesButton.click();
+
+  await waitFor(() => dom.window.document.querySelector<HTMLInputElement>("#prefixInput")?.value === "images/");
+  assert.equal(panel.open, false);
+});
+
 test("Web UI pins favorite objects from deeper prefixes", async () => {
   const { dom } = await loadWebApp();
 
@@ -482,6 +499,24 @@ test("Web UI lists favorites and removes them from the manager", async () => {
 
   assert.doesNotMatch(dom.window.document.querySelector("#favoriteList")?.textContent ?? "", /report\.txt/);
   assert.deepEqual(JSON.parse(dom.window.localStorage.getItem("s3fm.favoriteObjects") ?? "{}"), {});
+});
+
+test("Web UI switches between favorites and history panels", async () => {
+  const { dom } = await loadWebApp();
+
+  const favoritesPanel = dom.window.document.querySelector<HTMLDetailsElement>("#favoritesPanel");
+  const historyPanel = dom.window.document.querySelector<HTMLDetailsElement>("#historyPanel");
+  assert.ok(favoritesPanel);
+  assert.ok(historyPanel);
+
+  historyPanel.open = true;
+  historyPanel.dispatchEvent(new dom.window.Event("toggle"));
+  assert.equal(historyPanel.open, true);
+
+  favoritesPanel.open = true;
+  favoritesPanel.dispatchEvent(new dom.window.Event("toggle"));
+  assert.equal(favoritesPanel.open, true);
+  assert.equal(historyPanel.open, false);
 });
 
 test("Web UI stores bucket and prefix history and opens or removes entries", async () => {
@@ -625,6 +660,39 @@ test("Web UI filters the loaded object list locally", async () => {
   assert.match(childRows[1]?.textContent ?? "", /icons\//);
   assert.match(childRows[1]?.className ?? "", /prefix-folder/);
   assert.doesNotMatch(childRows[1]?.textContent ?? "", /logo-small\.png/);
+});
+
+test("Web UI sorts loaded objects by name or updated time", async () => {
+  const { dom } = await loadWebApp({
+    waitForObjects: false,
+    fetchHandler: (url) => {
+      if (url.pathname === "/api/list") {
+        return jsonResponse({
+          isTruncated: false,
+          nextContinuationToken: null,
+          limit: 1000,
+          objects: [
+            { key: "zeta.txt", size: 1, sizeLabel: "1 B", lastModified: "2026-05-24T00:03:00.000Z" },
+            { key: "alpha.txt", size: 1, sizeLabel: "1 B", lastModified: "2026-05-24T00:01:00.000Z" },
+          ],
+        });
+      }
+      return null;
+    },
+  });
+
+  await waitFor(() => dom.window.document.querySelector("#objectCount")?.textContent === "2");
+
+  const rowLabels = () => [...dom.window.document.querySelectorAll<HTMLElement>("#objectList .object-key")]
+    .map((row) => row.textContent);
+
+  assert.deepEqual(rowLabels(), ["alpha.txt", "zeta.txt"]);
+  assert.equal(dom.window.document.querySelector<HTMLButtonElement>("#objectSortNameButton")?.classList.contains("active"), true);
+
+  dom.window.document.querySelector<HTMLButtonElement>("#objectSortUpdatedButton")?.click();
+
+  assert.deepEqual(rowLabels(), ["zeta.txt", "alpha.txt"]);
+  assert.equal(dom.window.document.querySelector<HTMLButtonElement>("#objectSortUpdatedButton")?.classList.contains("active"), true);
 });
 
 test("Web UI previews PDFs through /api/raw iframe", async () => {

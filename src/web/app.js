@@ -26,6 +26,7 @@ const state = {
   favoriteObjects: {},
   bucketHistory: [],
   prefixHistory: {},
+  objectSort: "name",
   envKeyWidth: 260,
 };
 
@@ -36,6 +37,7 @@ const elements = {
   uploadFileButton: document.querySelector("#uploadFileButton"),
   uploadFileInput: document.querySelector("#uploadFileInput"),
   refreshButton: document.querySelector("#refreshButton"),
+  connectionPanel: document.querySelector("#connectionPanel"),
   prefixForm: document.querySelector("#prefixForm"),
   bucketSearchInput: document.querySelector("#bucketSearchInput"),
   bucketSuggestions: document.querySelector("#bucketSuggestions"),
@@ -46,10 +48,14 @@ const elements = {
   prefixInput: document.querySelector("#prefixInput"),
   prefixSuggestions: document.querySelector("#prefixSuggestions"),
   objectFilterInput: document.querySelector("#objectFilterInput"),
+  objectSortNameButton: document.querySelector("#objectSortNameButton"),
+  objectSortUpdatedButton: document.querySelector("#objectSortUpdatedButton"),
   objectCount: document.querySelector("#objectCount"),
   objectList: document.querySelector("#objectList"),
   loadMoreRow: document.querySelector("#loadMoreRow"),
   loadMoreButton: document.querySelector("#loadMoreButton"),
+  favoritesPanel: document.querySelector("#favoritesPanel"),
+  historyPanel: document.querySelector("#historyPanel"),
   favoriteList: document.querySelector("#favoriteList"),
   historyList: document.querySelector("#historyList"),
   selectedKey: document.querySelector("#selectedKey"),
@@ -609,6 +615,19 @@ function updateConnectionLabel() {
   elements.connectionLabel.textContent = `${state.selectedBucket ?? "バケット未選択"} · ${endpoint}${region}`;
 }
 
+function updateConnectionPanel() {
+  if (!elements.connectionPanel) return;
+  if (!state.selectedBucket) {
+    elements.connectionPanel.open = true;
+  }
+}
+
+function closeOtherSidebarPanel(openPanel) {
+  if (!openPanel?.open) return;
+  const otherPanel = openPanel === elements.favoritesPanel ? elements.historyPanel : elements.favoritesPanel;
+  if (otherPanel?.open) otherPanel.open = false;
+}
+
 function updateRegionControls() {
   const currentRegion = state.config?.region ?? "";
   elements.regionInput.value = currentRegion;
@@ -781,6 +800,40 @@ function currentObjectFilter() {
   return elements.objectFilterInput.value.trim().toLowerCase();
 }
 
+function objectUpdatedTime(object) {
+  const time = Date.parse(object.lastModified ?? "");
+  return Number.isFinite(time) ? time : 0;
+}
+
+function compareByName(a, b) {
+  return a.localeCompare(b);
+}
+
+function compareObjectsByName(a, b) {
+  return compareByName(a.key, b.key);
+}
+
+function compareObjectsByUpdated(a, b) {
+  return objectUpdatedTime(b) - objectUpdatedTime(a) || compareObjectsByName(a, b);
+}
+
+function compareObjects(a, b) {
+  return state.objectSort === "updated" ? compareObjectsByUpdated(a, b) : compareObjectsByName(a, b);
+}
+
+function updateObjectSortControls() {
+  elements.objectSortNameButton.classList.toggle("active", state.objectSort === "name");
+  elements.objectSortUpdatedButton.classList.toggle("active", state.objectSort === "updated");
+  elements.objectSortNameButton.setAttribute("aria-pressed", String(state.objectSort === "name"));
+  elements.objectSortUpdatedButton.setAttribute("aria-pressed", String(state.objectSort === "updated"));
+}
+
+function setObjectSort(sort) {
+  state.objectSort = sort;
+  updateObjectSortControls();
+  renderObjectList();
+}
+
 function visibleObjectRows() {
   const prefix = currentPrefix();
   return state.objects.filter((object) => {
@@ -792,7 +845,7 @@ function visibleObjectRows() {
 
 function childPrefixes(query = currentObjectFilter()) {
   const prefix = currentPrefix();
-  const names = new Set();
+  const names = new Map();
 
   for (const object of visibleObjectRows()) {
     const rest = object.key.slice(prefix.length);
@@ -800,12 +853,18 @@ function childPrefixes(query = currentObjectFilter()) {
     if (slash !== -1) {
       const childPrefix = `${prefix}${rest.slice(0, slash + 1)}`;
       if (!query || childPrefix.toLowerCase().includes(query) || object.key.toLowerCase().includes(query)) {
-        names.add(childPrefix);
+        names.set(childPrefix, Math.max(names.get(childPrefix) ?? 0, objectUpdatedTime(object)));
       }
     }
   }
 
-  return [...names].sort((a, b) => a.localeCompare(b));
+  return [...names.entries()]
+    .sort(([a, aUpdated], [b, bUpdated]) =>
+      state.objectSort === "updated"
+        ? bUpdated - aUpdated || compareByName(a, b)
+        : compareByName(a, b)
+    )
+    .map(([name]) => name);
 }
 
 function directObjects(query = currentObjectFilter()) {
@@ -935,7 +994,7 @@ function renderObjectList() {
     });
   }
 
-  const sortedObjects = sortFavoritesFirst(objects, (object) => isFavoriteObject(object.key));
+  const sortedObjects = sortFavoritesFirst(objects, (object) => isFavoriteObject(object.key), compareObjects);
   for (const object of sortedObjects) {
     const favorite = isFavoriteObject(object.key);
     appendObjectButton({
@@ -1069,6 +1128,7 @@ async function selectPrefix(prefix) {
 function renderBucketSearch() {
   elements.bucketSearchInput.value = state.selectedBucket ?? "";
   renderBucketSuggestions(false);
+  updateConnectionPanel();
 }
 
 async function loadSelectedBucketRegion() {
@@ -1110,6 +1170,7 @@ async function selectBucket(bucket) {
   renderPrefixSuggestions(false);
   updateConnectionLabel();
   updateRegionControls();
+  updateConnectionPanel();
   clearSelection();
   renderObjectList();
   try {
@@ -2089,6 +2150,14 @@ async function boot() {
   }
 }
 
+elements.favoritesPanel.addEventListener("toggle", () => {
+  closeOtherSidebarPanel(elements.favoritesPanel);
+});
+
+elements.historyPanel.addEventListener("toggle", () => {
+  closeOtherSidebarPanel(elements.historyPanel);
+});
+
 elements.prefixForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   renderPrefixSuggestions(false);
@@ -2100,6 +2169,7 @@ elements.prefixForm.addEventListener("submit", async (event) => {
 });
 
 elements.prefixInput.addEventListener("focus", () => {
+  if (elements.connectionPanel) elements.connectionPanel.open = true;
   renderPrefixSuggestions(true);
 });
 
@@ -2136,7 +2206,16 @@ elements.objectFilterInput.addEventListener("keydown", (event) => {
   }
 });
 
+elements.objectSortNameButton.addEventListener("click", () => {
+  setObjectSort("name");
+});
+
+elements.objectSortUpdatedButton.addEventListener("click", () => {
+  setObjectSort("updated");
+});
+
 elements.bucketSearchInput.addEventListener("focus", () => {
+  if (elements.connectionPanel) elements.connectionPanel.open = true;
   elements.bucketSearchInput.select();
   renderBucketSuggestions(true);
 });
@@ -2344,3 +2423,4 @@ elements.closeDiffButton.addEventListener("click", hideDiff);
 
 boot();
 updateEditorLayout();
+updateObjectSortControls();

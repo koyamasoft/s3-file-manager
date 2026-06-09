@@ -23,42 +23,51 @@
         </header>
         <input id="uploadFileInput" class="hidden" type="file" multiple>
 
-        <form id="prefixForm" class="prefix-form">
-          <label for="bucketSearchInput">Bucket</label>
-          <div class="bucket-row">
-            <input id="bucketSearchInput" name="bucket" type="text" placeholder="バケットを検索">
-            <div id="bucketSuggestions" class="bucket-suggestions hidden"></div>
-          </div>
-
-          <details id="regionPanel" class="region-panel">
-            <summary>Region</summary>
-            <div class="inline-row region-row">
-              <input id="regionInput" name="region" type="text" list="regionList" placeholder="ap-northeast-1" aria-label="Region">
-              <button id="regionApplyButton" type="button">切替</button>
-              <button id="regionMatchBucketButton" type="button">合わせる</button>
-              <datalist id="regionList">
-                <option value="ap-northeast-1"></option>
-                <option value="ap-northeast-3"></option>
-                <option value="us-east-1"></option>
-                <option value="us-west-2"></option>
-                <option value="eu-west-1"></option>
-                <option value="ap-southeast-1"></option>
-              </datalist>
+        <details id="connectionPanel" class="connection-panel" open>
+          <summary>接続設定</summary>
+          <form id="prefixForm" class="prefix-form">
+            <label for="bucketSearchInput">Bucket</label>
+            <div class="bucket-row">
+              <input id="bucketSearchInput" name="bucket" type="text" placeholder="バケットを検索">
+              <div id="bucketSuggestions" class="bucket-suggestions hidden"></div>
             </div>
-            <p id="bucketRegionHint" class="region-hint">バケット未選択</p>
-          </details>
 
-          <label for="prefixInput">Prefix</label>
-          <div class="inline-row prefix-row">
-            <input id="prefixInput" name="prefix" type="text" placeholder="logs/">
-            <button type="submit">検索</button>
-            <div id="prefixSuggestions" class="suggestions hidden"></div>
-          </div>
-        </form>
+            <details id="regionPanel" class="region-panel">
+              <summary>Region</summary>
+              <div class="inline-row region-row">
+                <input id="regionInput" name="region" type="text" list="regionList" placeholder="ap-northeast-1" aria-label="Region">
+                <button id="regionApplyButton" type="button">切替</button>
+                <button id="regionMatchBucketButton" type="button">合わせる</button>
+                <datalist id="regionList">
+                  <option value="ap-northeast-1"></option>
+                  <option value="ap-northeast-3"></option>
+                  <option value="us-east-1"></option>
+                  <option value="us-west-2"></option>
+                  <option value="eu-west-1"></option>
+                  <option value="ap-southeast-1"></option>
+                </datalist>
+              </div>
+              <p id="bucketRegionHint" class="region-hint">バケット未選択</p>
+            </details>
+
+            <label for="prefixInput">Prefix</label>
+            <div class="inline-row prefix-row">
+              <input id="prefixInput" name="prefix" type="text" placeholder="logs/">
+              <button type="submit">検索</button>
+              <div id="prefixSuggestions" class="suggestions hidden"></div>
+            </div>
+          </form>
+        </details>
 
         <div class="object-list-header">
           <span>Objects</span>
-          <span id="objectCount">0</span>
+          <div class="object-list-header-actions">
+            <div class="object-sort" aria-label="Objects の並び順">
+              <button id="objectSortNameButton" type="button">名前順</button>
+              <button id="objectSortUpdatedButton" type="button">更新順</button>
+            </div>
+            <span id="objectCount">0</span>
+          </div>
         </div>
         <div class="object-filter-row">
           <input id="objectFilterInput" type="search" placeholder="表示中の key を検索" aria-label="表示中の key を検索">
@@ -69,12 +78,12 @@
         </div>
 
         <div class="sidebar-panels">
-          <details class="favorites-panel">
+          <details id="favoritesPanel" class="favorites-panel">
             <summary>お気に入り</summary>
             <div id="favoriteList" class="favorite-list"></div>
           </details>
 
-          <details class="history-panel">
+          <details id="historyPanel" class="history-panel">
             <summary>履歴</summary>
             <div id="historyList" class="history-list"></div>
           </details>

@@ -106,10 +106,10 @@ button:disabled {
   min-height: 72px;
   padding: 14px 20px;
   border-bottom: 1px solid var(--line);
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 8px 16px;
 }
 
 .brand-actions {
@@ -125,7 +125,8 @@ button:disabled {
 }
 
 .brand p {
-  margin: 4px 0 0;
+  grid-column: 1 / -1;
+  margin: 0;
   color: var(--muted);
   font-size: 12px;
   overflow-wrap: anywhere;

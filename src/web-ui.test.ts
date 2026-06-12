@@ -115,6 +115,15 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+function formatLocalTimestampForTest(value: string): string {
+  const date = new Date(value);
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return [
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`,
+  ].join(" ");
+}
+
 async function waitFor(check: () => boolean): Promise<void> {
   for (let i = 0; i < 50; i += 1) {
     if (check()) return;
@@ -693,6 +702,41 @@ test("Web UI sorts loaded objects by name or updated time", async () => {
 
   assert.deepEqual(rowLabels(), ["zeta.txt", "alpha.txt"]);
   assert.equal(dom.window.document.querySelector<HTMLButtonElement>("#objectSortUpdatedButton")?.classList.contains("active"), true);
+});
+
+test("Web UI switches object timestamps between UTC and local time", async () => {
+  const { dom } = await loadWebApp({
+    waitForObjects: false,
+    fetchHandler: (url) => {
+      if (url.pathname === "/api/list") {
+        return jsonResponse({
+          isTruncated: false,
+          nextContinuationToken: null,
+          limit: 1000,
+          objects: [
+            { key: "alpha.txt", size: 1, sizeLabel: "1 B", lastModified: "2026-05-24T00:01:00.000Z" },
+          ],
+        });
+      }
+      return null;
+    },
+  });
+
+  await waitFor(() => dom.window.document.querySelector("#objectCount")?.textContent === "1");
+
+  const meta = () => dom.window.document.querySelector("#objectList .object-meta")?.textContent ?? "";
+  assert.match(meta(), /2026-05-24T00:01:00\.000Z/);
+  assert.equal(dom.window.document.querySelector<HTMLButtonElement>("#timeDisplayUtcButton")?.classList.contains("active"), true);
+
+  dom.window.document.querySelector<HTMLButtonElement>("#timeDisplayLocalButton")?.click();
+
+  assert.match(meta(), new RegExp(formatLocalTimestampForTest("2026-05-24T00:01:00.000Z").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.doesNotMatch(meta(), /T00:01:00\.000Z/);
+  assert.equal(dom.window.localStorage.getItem("s3fm.timeDisplay"), "local");
+  assert.equal(dom.window.document.querySelector<HTMLButtonElement>("#timeDisplayLocalButton")?.classList.contains("active"), true);
+
+  dom.window.document.querySelector<HTMLButtonElement>("#objectList .object-open-button")?.click();
+  await waitFor(() => dom.window.document.querySelector("#metaLastModified")?.textContent === formatLocalTimestampForTest("2026-05-24T00:00:00.000Z"));
 });
 
 test("Web UI previews PDFs through /api/raw iframe", async () => {

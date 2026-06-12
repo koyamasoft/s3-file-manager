@@ -364,10 +364,13 @@ select {
   min-width: 0;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
-.object-sort {
+.object-sort,
+.time-display {
   display: inline-grid;
   grid-template-columns: repeat(2, auto);
   overflow: hidden;
@@ -375,7 +378,8 @@ select {
   border-radius: 6px;
 }
 
-.object-sort button {
+.object-sort button,
+.time-display button {
   min-height: 26px;
   padding: 0 8px;
   border: 0;
@@ -386,11 +390,13 @@ select {
   font-weight: 700;
 }
 
-.object-sort button + button {
+.object-sort button + button,
+.time-display button + button {
   border-left: 1px solid var(--line);
 }
 
-.object-sort button.active {
+.object-sort button.active,
+.time-display button.active {
   background: #e8f2ef;
   color: var(--accent-strong);
 }

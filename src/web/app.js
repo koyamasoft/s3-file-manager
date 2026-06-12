@@ -27,6 +27,7 @@ const state = {
   bucketHistory: [],
   prefixHistory: {},
   objectSort: "name",
+  timeDisplay: "utc",
   envKeyWidth: 260,
 };
 
@@ -50,6 +51,8 @@ const elements = {
   objectFilterInput: document.querySelector("#objectFilterInput"),
   objectSortNameButton: document.querySelector("#objectSortNameButton"),
   objectSortUpdatedButton: document.querySelector("#objectSortUpdatedButton"),
+  timeDisplayUtcButton: document.querySelector("#timeDisplayUtcButton"),
+  timeDisplayLocalButton: document.querySelector("#timeDisplayLocalButton"),
   objectCount: document.querySelector("#objectCount"),
   objectList: document.querySelector("#objectList"),
   loadMoreRow: document.querySelector("#loadMoreRow"),
@@ -210,6 +213,19 @@ function readNumberStorage(key, fallback) {
   return Number.isFinite(value) ? value : fallback;
 }
 
+function readTimeDisplayStorage() {
+  const value = window.localStorage?.getItem("s3fm.timeDisplay");
+  return value === "local" ? "local" : "utc";
+}
+
+function saveTimeDisplay() {
+  try {
+    window.localStorage?.setItem("s3fm.timeDisplay", state.timeDisplay);
+  } catch {
+    showToast("時刻表示設定を保存できませんでした。", "error");
+  }
+}
+
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
@@ -229,6 +245,11 @@ function loadHistory() {
 function loadEnvLayout() {
   state.envKeyWidth = clamp(readNumberStorage("s3fm.envKeyWidth", 260), 120, 640);
   applyEnvKeyWidth();
+}
+
+function loadTimeDisplay() {
+  state.timeDisplay = readTimeDisplayStorage();
+  updateTimeDisplayControls();
 }
 
 function applyEnvKeyWidth() {
@@ -782,7 +803,7 @@ function setMetadata(metadata) {
   setContentTypeControl(state.currentContentType ?? metadata?.contentType ?? "");
   elements.metaSize.textContent = formatBytes(metadata?.contentLength);
   elements.metaEtag.textContent = metadata?.etag ?? "-";
-  elements.metaLastModified.textContent = metadata?.lastModified ?? "-";
+  elements.metaLastModified.textContent = formatTimestamp(metadata?.lastModified);
   updateWriteControls();
 }
 
@@ -803,6 +824,28 @@ function currentObjectFilter() {
 function objectUpdatedTime(object) {
   const time = Date.parse(object.lastModified ?? "");
   return Number.isFinite(time) ? time : 0;
+}
+
+function padDatePart(value) {
+  return String(value).padStart(2, "0");
+}
+
+function formatLocalTimestamp(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value ?? "-";
+  return [
+    `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`,
+    `${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}:${padDatePart(date.getSeconds())}`,
+  ].join(" ");
+}
+
+function formatTimestamp(value) {
+  if (!value) return "-";
+  return state.timeDisplay === "local" ? formatLocalTimestamp(value) : value;
+}
+
+function objectMetaLabel(object) {
+  return object.lastModified ? `${object.sizeLabel} · ${formatTimestamp(object.lastModified)}` : object.sizeLabel;
 }
 
 function compareByName(a, b) {
@@ -828,9 +871,24 @@ function updateObjectSortControls() {
   elements.objectSortUpdatedButton.setAttribute("aria-pressed", String(state.objectSort === "updated"));
 }
 
+function updateTimeDisplayControls() {
+  elements.timeDisplayUtcButton.classList.toggle("active", state.timeDisplay === "utc");
+  elements.timeDisplayLocalButton.classList.toggle("active", state.timeDisplay === "local");
+  elements.timeDisplayUtcButton.setAttribute("aria-pressed", String(state.timeDisplay === "utc"));
+  elements.timeDisplayLocalButton.setAttribute("aria-pressed", String(state.timeDisplay === "local"));
+}
+
 function setObjectSort(sort) {
   state.objectSort = sort;
   updateObjectSortControls();
+  renderObjectList();
+}
+
+function setTimeDisplay(display) {
+  state.timeDisplay = display === "local" ? "local" : "utc";
+  saveTimeDisplay();
+  updateTimeDisplayControls();
+  setMetadata(state.metadata);
   renderObjectList();
 }
 
@@ -975,7 +1033,7 @@ function renderObjectList() {
     appendObjectButton({
       className: "favorite-pinned",
       label: object.key,
-      meta: object.lastModified ? `${object.sizeLabel} · ${object.lastModified}` : object.sizeLabel,
+      meta: objectMetaLabel(object),
       active: object.key === state.selectedKey,
       favorite: true,
       onFavorite: () => toggleFavoriteObject(object.key),
@@ -999,7 +1057,7 @@ function renderObjectList() {
     const favorite = isFavoriteObject(object.key);
     appendObjectButton({
       label: object.key,
-      meta: `${object.sizeLabel} · ${object.lastModified ?? "-"}`,
+      meta: objectMetaLabel(object),
       active: object.key === state.selectedKey,
       favorite,
       onFavorite: () => toggleFavoriteObject(object.key),
@@ -2141,6 +2199,7 @@ async function boot() {
     loadFavorites();
     loadHistory();
     loadEnvLayout();
+    loadTimeDisplay();
     await loadConfig();
     await loadBuckets();
     await loadSelectedBucketRegion();
@@ -2212,6 +2271,14 @@ elements.objectSortNameButton.addEventListener("click", () => {
 
 elements.objectSortUpdatedButton.addEventListener("click", () => {
   setObjectSort("updated");
+});
+
+elements.timeDisplayUtcButton.addEventListener("click", () => {
+  setTimeDisplay("utc");
+});
+
+elements.timeDisplayLocalButton.addEventListener("click", () => {
+  setTimeDisplay("local");
 });
 
 elements.bucketSearchInput.addEventListener("focus", () => {
@@ -2424,3 +2491,4 @@ elements.closeDiffButton.addEventListener("click", hideDiff);
 boot();
 updateEditorLayout();
 updateObjectSortControls();
+updateTimeDisplayControls();

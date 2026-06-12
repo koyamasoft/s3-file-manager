@@ -344,6 +344,27 @@ Web UI は画面リロード時にも S3 クライアントを作り直します
 
 `.env` の一時認証情報を手で書き換えた場合も、リロード時に env ファイルの AWS 認証関連キーを読み直します。シェルの `export` だけを更新した場合は、起動中の Node.js プロセスには反映されないため、Web サーバーを再起動してください。
 
+`aws login` や `aws sso login` 後も `ExpiredToken` が出る場合は、古い一時認証情報がシェルの環境変数に残っている可能性があります。AWS CLI / AWS SDK は profile より `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` などの環境変数を優先します。
+
+まず認証情報の参照元を確認してください。
+
+```bash
+aws configure list
+aws sts get-caller-identity
+```
+
+`aws configure list` で `Type` が `env` になっている場合は、期限切れの環境変数が勝っている可能性があります。新しいターミナルを開くか、以下を実行してから再確認してください。
+
+```bash
+unset AWS_ACCESS_KEY_ID
+unset AWS_SECRET_ACCESS_KEY
+unset AWS_SESSION_TOKEN
+unset AWS_SECURITY_TOKEN
+aws sts get-caller-identity
+```
+
+`.zshrc` や `.zprofile` などに AWS 認証情報を `export` している場合は、新しいターミナルでも同じ値が読み込まれるため、設定ファイルから削除してください。
+
 ```bash
 lsof -ti tcp:5174
 kill <PID>
@@ -390,6 +411,8 @@ npm run web -- --bucket your-bucket-name
 ```bash
 aws sts get-caller-identity
 ```
+
+`aws login` 後も `aws sts get-caller-identity` が `ExpiredToken` になる場合は、古い `AWS_SESSION_TOKEN` などの環境変数が残っている可能性があります。新しいターミナルで確認するか、環境変数を解除してください。
 
 認証更新後も Web UI でバケットが見えない場合は、起動中の S3 File Manager が古い認証状態を保持している可能性があります。Web サーバーを再起動してください。
 

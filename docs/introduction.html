@@ -1,0 +1,749 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>S3 File Manager Introduction</title>
+  <style>
+    :root {
+      --bg: #f5f7f9;
+      --panel: #ffffff;
+      --text: #17202a;
+      --muted: #667085;
+      --line: #d8dee8;
+      --accent: #126a5a;
+      --accent-soft: #e8f2ef;
+      --warn: #fff4d6;
+      --warn-text: #6f4d00;
+      --shadow: 0 18px 40px rgb(23 32 42 / 10%);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.7;
+    }
+
+    a {
+      color: var(--accent);
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .page {
+      width: min(1120px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 42px 0 64px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(340px, 0.95fr);
+      gap: 32px;
+      align-items: center;
+      min-height: 520px;
+    }
+
+    .eyebrow {
+      margin: 0 0 14px;
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(44px, 7vw, 76px);
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    .lead {
+      max-width: 660px;
+      margin: 24px 0 0;
+      color: var(--muted);
+      font-size: 18px;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 28px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 0 18px;
+      border-radius: 8px;
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 800;
+    }
+
+    .button.secondary {
+      background: #fff;
+      color: var(--accent);
+    }
+
+    .mock {
+      min-width: 0;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .mock-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .mock-title {
+      font-size: 24px;
+      font-weight: 850;
+      line-height: 1.1;
+    }
+
+    .mock-sub {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+
+    .mock-icons {
+      display: flex;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+
+    .mock-icon {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 7px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    .mock-body {
+      display: grid;
+      grid-template-columns: 210px minmax(0, 1fr);
+      min-height: 420px;
+    }
+
+    .mock-side {
+      border-right: 1px solid var(--line);
+      background: #fbfcfe;
+    }
+
+    .mock-section {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .mock-label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 850;
+      text-transform: uppercase;
+    }
+
+    .mock-input {
+      height: 34px;
+      margin-top: 8px;
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fff;
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .mock-row-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .segmented {
+      display: inline-grid;
+      grid-template-columns: 1fr 1fr;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .segmented span {
+      padding: 4px 8px;
+      background: #fff;
+    }
+
+    .segmented span.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .object-row {
+      display: grid;
+      grid-template-columns: 44px minmax(0, 1fr);
+      border-bottom: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .star {
+      display: grid;
+      place-items: center;
+      border-right: 1px solid var(--line);
+      color: #8993a3;
+      font-size: 22px;
+    }
+
+    .star.active {
+      color: #a96500;
+      background: #fff8df;
+    }
+
+    .object-main {
+      min-width: 0;
+      padding: 12px 14px;
+    }
+
+    .object-key {
+      font-weight: 850;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .object-meta {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .mock-work {
+      padding: 18px;
+    }
+
+    .warn {
+      padding: 13px 14px;
+      border: 1px solid #e5c86d;
+      border-radius: 8px;
+      background: var(--warn);
+      color: var(--warn-text);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .editor {
+      margin-top: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+      overflow: hidden;
+    }
+
+    .editor-bar {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .badge {
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    pre {
+      margin: 0;
+      padding: 16px;
+      color: #334155;
+      font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+    }
+
+    section {
+      margin-top: 54px;
+    }
+
+    h2 {
+      margin: 0 0 18px;
+      font-size: 30px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .card {
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .card h3 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      line-height: 1.35;
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .quickstart {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(280px, 0.65fr);
+      gap: 16px;
+    }
+
+    code {
+      color: #0f5132;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.95em;
+    }
+
+    .code {
+      overflow: auto;
+      padding: 18px;
+      border-radius: 8px;
+      background: #111827;
+      color: #e5e7eb;
+      font: 13px/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .code code {
+      color: inherit;
+    }
+
+    .timeline {
+      position: relative;
+      display: grid;
+      gap: 14px;
+    }
+
+    .timeline-item {
+      display: grid;
+      grid-template-columns: 138px minmax(0, 1fr);
+      gap: 18px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .date {
+      color: var(--accent);
+      font-size: 14px;
+      font-weight: 850;
+    }
+
+    .timeline-item h3 {
+      margin: 0 0 8px;
+      font-size: 18px;
+    }
+
+    .timeline-item p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .commits {
+      margin-top: 10px;
+      color: #8993a3;
+      font-size: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .note {
+      padding: 18px 20px;
+      border: 1px solid #e5c86d;
+      border-radius: 8px;
+      background: var(--warn);
+      color: var(--warn-text);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .endpoint-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .endpoint {
+      display: grid;
+      grid-template-columns: 155px minmax(0, 1fr);
+      gap: 12px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      font-size: 13px;
+    }
+
+    .endpoint code {
+      color: var(--accent);
+      font-weight: 850;
+      overflow-wrap: anywhere;
+    }
+
+    .endpoint span {
+      color: var(--muted);
+    }
+
+    .footer {
+      margin-top: 54px;
+      padding-top: 24px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 920px) {
+      .hero,
+      .quickstart {
+        grid-template-columns: 1fr;
+      }
+
+      .grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .page {
+        width: min(100% - 24px, 1120px);
+        padding-top: 28px;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .mock-body {
+        grid-template-columns: 1fr;
+      }
+
+      .mock-side {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .timeline-item {
+        grid-template-columns: 1fr;
+        gap: 6px;
+      }
+
+      .endpoint {
+        grid-template-columns: 1fr;
+        gap: 4px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Local-first S3 / MinIO Tool</p>
+        <h1>S3 File Manager</h1>
+        <p class="lead">
+          S3 / MinIO / MiniStack などの S3 互換ストレージを、ローカル環境から安全に確認・編集するための Web UI / CLI ツールです。
+          認証情報はブラウザに渡さず、127.0.0.1 の Node.js サーバーが AWS SDK 経由でアクセスします。
+        </p>
+        <div class="hero-actions">
+          <a class="button" href="https://github.com/koyamasoft/s3-file-manager">GitHub を開く</a>
+          <a class="button secondary" href="#history">開発ヒストリーを見る</a>
+        </div>
+      </div>
+
+      <div class="mock" aria-label="S3 File Manager Web UI mock">
+        <div class="mock-head">
+          <div>
+            <div class="mock-title">S3 File<br>Manager</div>
+            <div class="mock-sub">example-assets-bucket · AWS S3 · ap-northeast-1</div>
+          </div>
+          <div class="mock-icons" aria-hidden="true">
+            <div class="mock-icon">□</div>
+            <div class="mock-icon">＋</div>
+            <div class="mock-icon">↑</div>
+            <div class="mock-icon">↻</div>
+          </div>
+        </div>
+        <div class="mock-body">
+          <div class="mock-side">
+            <div class="mock-section">
+              <div class="mock-label">接続設定　表示</div>
+              <div class="mock-input">example-assets-bucket</div>
+              <div class="mock-input">logs/2026/</div>
+            </div>
+            <div class="mock-row-head">
+              <div class="mock-label">Objects</div>
+              <div class="segmented"><span>名前順</span><span class="active">更新順</span></div>
+            </div>
+            <div class="object-row">
+              <div class="star active">★</div>
+              <div class="object-main">
+                <div class="object-key">logs/2026/app.env</div>
+                <div class="object-meta">265 B · 2026-05-16 16:38:39</div>
+              </div>
+            </div>
+            <div class="object-row">
+              <div class="star">☆</div>
+              <div class="object-main">
+                <div class="object-key">manual.pdf</div>
+                <div class="object-meta">750.7 KiB · 2026-05-20 22:15:28</div>
+              </div>
+            </div>
+          </div>
+          <div class="mock-work">
+            <div class="warn">AWS S3 に接続しています。アップロード前に対象キーを確認してください。</div>
+            <div class="editor">
+              <div class="editor-bar">
+                <span class="badge">env</span>
+                <span class="segmented"><span>UTC</span><span class="active">ローカル</span></span>
+              </div>
+              <pre>AWS_REGION=ap-northeast-1
+S3_BUCKET=example-assets-bucket
+APP_MODE=local</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>何ができるか</h2>
+      <div class="grid">
+        <article class="card">
+          <h3>S3 オブジェクトを探す</h3>
+          <p>バケット検索、Prefix 階層表示、ローカルフィルタ、名前順 / 更新順ソートで目的の key を素早く見つけられます。</p>
+        </article>
+        <article class="card">
+          <h3>安全に確認・編集する</h3>
+          <p>起動直後は保存 OFF。テキスト、JSON、YAML、CSV、env ファイルを確認し、差分を見てから保存できます。</p>
+        </article>
+        <article class="card">
+          <h3>画像・PDF をプレビュー</h3>
+          <p>JPEG、PNG、WebP、GIF、PDF を Web UI で確認できます。大きいファイルはダウンロードで扱います。</p>
+        </article>
+        <article class="card">
+          <h3>アップロードとコピー</h3>
+          <p>単体/複数ファイル、ドラッグ&ドロップ、選択中オブジェクトの別 key コピーに対応しています。</p>
+        </article>
+        <article class="card">
+          <h3>お気に入りと履歴</h3>
+          <p>よく使うバケットやオブジェクトをお気に入り登録し、最近使ったバケット / Prefix に戻れます。</p>
+        </article>
+        <article class="card">
+          <h3>CLI でも使える</h3>
+          <p><code>list</code>, <code>head</code>, <code>get</code>, <code>show</code>, <code>diff</code>, <code>edit</code>, <code>put</code>, <code>copy</code> を用意しています。</p>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <h2>安全設計</h2>
+      <div class="grid">
+        <article class="card">
+          <h3>認証情報はブラウザに渡さない</h3>
+          <p>ブラウザは localhost の API にアクセスし、S3 操作は Node.js サーバー側で実行します。</p>
+        </article>
+        <article class="card">
+          <h3>ローカル専用</h3>
+          <p>Web UI は 127.0.0.1 で待ち受けます。共有サーバーとして使う設計ではありません。</p>
+        </article>
+        <article class="card">
+          <h3>書き込みは明示的に有効化</h3>
+          <p>保存 ON、バケット作成、上書き確認、CSRF / Origin チェックで誤操作を減らします。</p>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <h2>Web UI と CLI の関係</h2>
+      <div class="grid">
+        <article class="card">
+          <h3>Web UI はローカル API を呼ぶ</h3>
+          <p>ブラウザは <code>http://127.0.0.1:5174</code> で配信される画面から、同じローカルサーバーの <code>/api/...</code> だけを呼び出します。S3 へのアクセスや認証情報の読み込みはサーバー側で行います。</p>
+        </article>
+        <article class="card">
+          <h3>CLI と同じ中核処理を使う</h3>
+          <p>Web UI サーバーと CLI は、設定読み込み、S3 操作、Content-Type 判定、認証期限切れ時の再試行などの共通モジュールを利用します。</p>
+        </article>
+        <article class="card">
+          <h3>CLI を直接実行しない</h3>
+          <p>Web UI が CLI を別プロセスとして叩くのではなく、両方が同じ実装を共有する構成です。動作の一貫性を保ちつつ、ブラウザ側に認証情報を出しません。</p>
+        </article>
+      </div>
+      <div class="endpoint-list" aria-label="ローカルAPIエンドポイント例">
+        <div class="endpoint"><code>GET /api/config</code><span>起動時の設定、保存可否、CSRF トークンを取得します。</span></div>
+        <div class="endpoint"><code>GET /api/buckets</code><span>認証情報で参照できるバケット一覧を取得します。</span></div>
+        <div class="endpoint"><code>GET /api/list?bucket=...&amp;prefix=...</code><span>指定バケット / Prefix のオブジェクト一覧を取得します。</span></div>
+        <div class="endpoint"><code>GET /api/object?bucket=...&amp;key=...</code><span>選択したオブジェクトのメタデータと、編集可能なテキスト本文を取得します。</span></div>
+        <div class="endpoint"><code>GET /api/raw?bucket=...&amp;key=...</code><span>画像や PDF のプレビュー用にオブジェクト本文を返します。</span></div>
+        <div class="endpoint"><code>POST /api/save</code><span>保存 ON の時だけ、テキスト編集内容を S3 に保存します。</span></div>
+        <div class="endpoint"><code>POST /api/upload</code><span>保存 ON の時だけ、ローカルファイルを S3 にアップロードします。</span></div>
+        <div class="endpoint"><code>POST /api/copy</code><span>保存 ON の時だけ、選択オブジェクトを別 key にコピーします。</span></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>試し方</h2>
+      <div class="quickstart">
+        <div class="code"><code>git clone https://github.com/koyamasoft/s3-file-manager.git
+cd s3-file-manager
+npm ci
+npm run build
+npm run web</code></div>
+        <div class="note">
+          起動後は <code>http://127.0.0.1:5174</code> を開きます。AWS S3 を使う場合は、先に <code>aws sts get-caller-identity</code> で認証情報を確認してください。
+        </div>
+      </div>
+    </section>
+
+    <section id="history">
+      <h2>開発ヒストリー</h2>
+      <div class="timeline">
+        <article class="timeline-item">
+          <div class="date">2026-05-16</div>
+          <div>
+            <h3>最初の形と安全なローカル Web UI</h3>
+            <p>Initial commit から、env 編集、保存モード切り替え、バケット作成、認証期限切れ時の S3 クライアント再作成、差分表示、バケット / Prefix サジェスト、ダウンロード、README 整備まで一気に土台を作りました。</p>
+            <div class="commits">ba62398, 8b9ca8d, 73a4c5b, e5a5ee8, 58cae7f, d8dfa06, a5b8962, 4f87440</div>
+          </div>
+        </article>
+
+        <article class="timeline-item">
+          <div class="date">2026-05-17</div>
+          <div>
+            <h3>Content-Type と Prefix 階層表示</h3>
+            <p>Content-Type 編集、カスタム入力、サーバー側検証、Prefix をフォルダ風に辿る階層表示を追加し、S3 の key 構造を扱いやすくしました。</p>
+            <div class="commits">0f3064f, 4fbf0e6, 11aa7f1, ab0b9e0</div>
+          </div>
+        </article>
+
+        <article class="timeline-item">
+          <div class="date">2026-05-20</div>
+          <div>
+            <h3>ページング、テスト、アップロード</h3>
+            <p>1000件単位の追加読み込み、サーバー API 境界テスト、CSRF テスト、ローカルファイルアップロード、複数ファイルアップロード、PDF プレビュー、一覧フィルタ検索を追加しました。</p>
+            <div class="commits">43f2ada, 525ff5e, dabd975, 1611560, 5086599, 5a10065, 6b7a4ea, 17fcd8d</div>
+          </div>
+        </article>
+
+        <article class="timeline-item">
+          <div class="date">2026-05-24</div>
+          <div>
+            <h3>CI と実用操作の強化</h3>
+            <p>GitHub Actions、Node 24 対応、ドラッグ&ドロップ、コピー操作、Content-Type 自動判定、アップロード失敗詳細、Web UI / CLI のオブジェクトコピー、Issue / PR テンプレートを整えました。</p>
+            <div class="commits">9461591, cc5369f, c6db597, 058a72b, 7a8f50e, 04ce31d, 2c7604f, 6fe7bdc</div>
+          </div>
+        </article>
+
+        <article class="timeline-item">
+          <div class="date">2026-05-25 - 05-26</div>
+          <div>
+            <h3>公開準備と認証復帰の説明</h3>
+            <p>README バッジ、リリース確認、認証更新後のリロード復帰改善、サーバー再起動手順の追記を行い、公開リポジトリとして見てもらいやすくしました。</p>
+            <div class="commits">1376029, d350c5a, 5d3fa1c, 966f510</div>
+          </div>
+        </article>
+
+        <article class="timeline-item">
+          <div class="date">2026-05-29</div>
+          <div>
+            <h3>お気に入り、リージョン、エラー通知</h3>
+            <p>バケット切り替え時の表示リセット、お気に入り機能と管理一覧、env キー列幅調整、S3 リージョンリダイレクト、エラー通知の手動クローズ、リージョン切り替え、階層フィルタ修正を入れました。</p>
+            <div class="commits">31f35ac, 1074a99, a8ce9c0, 2201ca5, 9317516, e587cbd, 4d54094, f048c15, f983bba, e195d34, fe7751c</div>
+          </div>
+        </article>
+
+        <article class="timeline-item">
+          <div class="date">2026-05-30 - 05-31</div>
+          <div>
+            <h3>バケット / Prefix 履歴とリージョン案内</h3>
+            <p>最近使ったバケット / Prefix に戻れる履歴機能を追加し、PermanentRedirect などのリージョン不一致時に切り替え操作へ誘導できるようにしました。</p>
+            <div class="commits">98b9965, 5dc1e1e, 6dff022</div>
+          </div>
+        </article>
+
+        <article class="timeline-item">
+          <div class="date">2026-06-09</div>
+          <div>
+            <h3>一覧操作の磨き込み</h3>
+            <p>Object 一覧の縦幅を広げ、接続設定の折りたたみ、管理パネルの切り替え表示、Objects の名前順 / 更新順ソート、ヘッダーの接続表示改善、スクリーンショット更新を行いました。</p>
+            <div class="commits">875da10, c83a701, 0881566, 4853239, 82191ce</div>
+          </div>
+        </article>
+
+        <article class="timeline-item">
+          <div class="date">2026-06-12 - 06-13</div>
+          <div>
+            <h3>時刻表示と認証トラブルシュート</h3>
+            <p>オブジェクト更新日時を UTC / ローカルタイムで切り替えられるようにし、aws login 後も ExpiredToken になるケースの確認手順を README に追記しました。</p>
+            <div class="commits">f6034ee, 4256eb2</div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <h2>紹介時の注意</h2>
+      <div class="note">
+        まずは読み取り用途で試してもらうのがおすすめです。会社の AWS S3 に接続する場合は、対象バケットに絞った最小権限の IAM / profile を使い、<code>--allow-write</code> と <code>--allow-create-bucket</code> は必要な場合だけ有効にしてください。
+      </div>
+    </section>
+
+    <div class="footer">
+      Generated from the repository history of S3 File Manager. This file is self-contained and can be shared as a single HTML document.
+    </div>
+  </main>
+</body>
+</html>

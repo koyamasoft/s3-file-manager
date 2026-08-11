@@ -681,6 +681,10 @@ test("Web UI preserves existing env value quote styles when saving env mode", as
   envOpenButton.click();
   await waitFor(() => dom.window.document.querySelectorAll(".env-row input").length >= 10);
 
+  const badges = [...dom.window.document.querySelectorAll<HTMLElement>(".env-quote-badge")];
+  assert.deepEqual(badges.map((badge) => badge.textContent), ["none", "\"", "'", "'", "none", "none"]);
+  assert.match(badges[0]?.getAttribute("aria-label") ?? "", /quote なし/);
+
   const inputs = [...dom.window.document.querySelectorAll<HTMLInputElement>(".env-row input")];
   inputs[1].value = "hello mars";
   inputs[1].dispatchEvent(new dom.window.Event("input", { bubbles: true }));

@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
+    "dev": "npm run web",
     "pres3": "npm run build",
     "s3": "node dist/cli.js",
     "test": "npm run build && node --test dist/*.test.js",

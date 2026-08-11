@@ -891,7 +891,7 @@ textarea:disabled {
 
 .env-row {
   display: grid;
-  grid-template-columns: minmax(120px, var(--env-key-width)) 8px minmax(0, 1fr) 36px;
+  grid-template-columns: minmax(120px, var(--env-key-width)) 8px minmax(0, 1fr) 48px 36px;
   gap: 8px;
   align-items: center;
   margin-bottom: 8px;
@@ -925,6 +925,20 @@ body.resizing-env-key .env-key-resizer {
 body.resizing-env-key {
   cursor: col-resize;
   user-select: none;
+}
+
+.env-quote-badge {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .env-raw-line {

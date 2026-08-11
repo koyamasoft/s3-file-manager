@@ -1351,6 +1351,20 @@ function formatEnvValue(value, quoteStyle = "auto") {
   return formatDoubleQuotedEnvValue(value);
 }
 
+function envQuoteBadgeLabel(quoteStyle) {
+  if (quoteStyle === "double") return "\"";
+  if (quoteStyle === "single") return "'";
+  if (quoteStyle === "none") return "none";
+  return "auto";
+}
+
+function envQuoteBadgeTitle(quoteStyle) {
+  if (quoteStyle === "double") return "保存時に double quote 形式を保持します";
+  if (quoteStyle === "single") return "保存時に single quote 形式を保持します";
+  if (quoteStyle === "none") return "保存時に quote なしの形式を保持します";
+  return "保存時に値から quote 形式を自動判定します";
+}
+
 function serializeEnvRows() {
   return state.envRows
     .map((row) => {
@@ -1425,7 +1439,13 @@ function renderEnvRows() {
         row.value = value.value;
       });
 
-      wrapper.append(key, resize, value);
+      const quote = document.createElement("span");
+      quote.className = "env-quote-badge";
+      quote.textContent = envQuoteBadgeLabel(row.quoteStyle);
+      quote.title = envQuoteBadgeTitle(row.quoteStyle);
+      quote.setAttribute("aria-label", quote.title);
+
+      wrapper.append(key, resize, value, quote);
     }
 
     const remove = document.createElement("button");

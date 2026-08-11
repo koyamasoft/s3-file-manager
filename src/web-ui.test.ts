@@ -621,6 +621,83 @@ test("Web UI resizes and stores the env key column width", async () => {
   assert.equal(dom.window.localStorage.getItem("s3fm.envKeyWidth"), String(expectedWidth));
 });
 
+test("Web UI preserves existing env value quote styles when saving env mode", async () => {
+  let savedContent = "";
+  const { dom } = await loadWebApp({
+    waitForObjects: false,
+    fetchHandler: (url, init) => {
+      if (url.pathname === "/api/list") {
+        return jsonResponse({
+          isTruncated: false,
+          nextContinuationToken: null,
+          limit: 1000,
+          objects: [
+            ...objects,
+            { key: ".env", size: 80, sizeLabel: "80 B", lastModified: "2026-05-24T00:03:00.000Z" },
+          ],
+        });
+      }
+      if (url.pathname === "/api/object" && url.searchParams.get("key") === ".env") {
+        return jsonResponse({
+          metadata: {
+            key: ".env",
+            etag: "\"etag\"",
+            contentType: "text/plain; charset=utf-8",
+            contentLength: 80,
+            lastModified: "2026-05-24T00:00:00.000Z",
+          },
+          text: true,
+          content: [
+            "PLAIN=hello world",
+            "DOUBLE=\"hello world\"",
+            "SINGLE='hello world'",
+            "SINGLE_PATH='C:\\tmp\\file'",
+            "SAFE=abc",
+            "export EXPORTED=hello world",
+          ].join("\n"),
+        });
+      }
+      if (url.pathname === "/api/save") {
+        savedContent = JSON.parse(String(init?.body)).content;
+        return jsonResponse({
+          metadata: {
+            key: ".env",
+            etag: "\"saved\"",
+            contentType: "text/plain; charset=utf-8",
+            contentLength: savedContent.length,
+            lastModified: "2026-05-24T00:04:00.000Z",
+          },
+        });
+      }
+      return null;
+    },
+  });
+
+  await waitFor(() => dom.window.document.querySelector("#objectList")?.textContent?.includes(".env") ?? false);
+
+  const envOpenButton = [...dom.window.document.querySelectorAll<HTMLButtonElement>("#objectList .object-open-button")]
+    .find((button) => button.textContent?.includes(".env"));
+  assert.ok(envOpenButton);
+  envOpenButton.click();
+  await waitFor(() => dom.window.document.querySelectorAll(".env-row input").length >= 10);
+
+  const inputs = [...dom.window.document.querySelectorAll<HTMLInputElement>(".env-row input")];
+  inputs[1].value = "hello mars";
+  inputs[1].dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+
+  dom.window.document.querySelector<HTMLButtonElement>("#saveButton")?.click();
+  await waitFor(() => savedContent.length > 0);
+
+  assert.equal(savedContent, [
+    "PLAIN=hello mars",
+    "DOUBLE=\"hello world\"",
+    "SINGLE='hello world'",
+    "SINGLE_PATH='C:\\tmp\\file'",
+    "SAFE=abc",
+    "export EXPORTED=hello world",
+  ].join("\n"));
+});
+
 test("Web UI filters the loaded object list locally", async () => {
   const { dom } = await loadWebApp({
     fetchHandler: (url) => {

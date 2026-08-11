@@ -1302,36 +1302,53 @@ function contentTypeForKey(key) {
 function unquoteEnvValue(value) {
   const trimmed = value.trim();
   if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
-    return trimmed.slice(1, -1).replace(/\\([\\nrt"])/g, (_, escaped) => {
-      if (escaped === "n") return "\n";
-      if (escaped === "r") return "\r";
-      if (escaped === "t") return "\t";
-      return escaped;
-    });
+    return {
+      quoteStyle: "double",
+      value: trimmed.slice(1, -1).replace(/\\([\\nrt"])/g, (_, escaped) => {
+        if (escaped === "n") return "\n";
+        if (escaped === "r") return "\r";
+        if (escaped === "t") return "\t";
+        return escaped;
+      }),
+    };
   }
   if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
-    return trimmed.slice(1, -1);
+    return { quoteStyle: "single", value: trimmed.slice(1, -1) };
   }
-  return value;
+  return { quoteStyle: "none", value };
 }
 
 function parseEnvContent(content) {
   if (!content) return [];
   return content.split(/\r?\n/).map((line) => {
-    const body = line.trimStart().startsWith("export ") ? line.trimStart().slice("export ".length) : line;
+    const trimmedStart = line.trimStart();
+    const prefix = trimmedStart.startsWith("export ") ? "export " : "";
+    const body = prefix ? trimmedStart.slice(prefix.length) : line;
     const equals = body.indexOf("=");
     if (equals <= 0) return { type: "raw", raw: line };
 
     const key = body.slice(0, equals).trim();
     if (!key || key.startsWith("#")) return { type: "raw", raw: line };
 
-    return { type: "entry", key, value: unquoteEnvValue(body.slice(equals + 1)) };
+    const parsedValue = unquoteEnvValue(body.slice(equals + 1));
+    return { type: "entry", key, prefix, ...parsedValue };
   });
 }
 
-function formatEnvValue(value) {
-  if (/^[A-Za-z0-9_./:@+-]*$/.test(value)) return value;
+function formatDoubleQuotedEnvValue(value) {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"").replace(/\n/g, "\\n")}"`;
+}
+
+function formatSingleQuotedEnvValue(value) {
+  return `'${value.replace(/'/g, "\\'").replace(/\n/g, "\\n")}'`;
+}
+
+function formatEnvValue(value, quoteStyle = "auto") {
+  if (quoteStyle === "double") return formatDoubleQuotedEnvValue(value);
+  if (quoteStyle === "single") return formatSingleQuotedEnvValue(value);
+  if (quoteStyle === "none" && !value.includes("\n")) return value;
+  if (/^[A-Za-z0-9_./:@+-]*$/.test(value)) return value;
+  return formatDoubleQuotedEnvValue(value);
 }
 
 function serializeEnvRows() {
@@ -1340,7 +1357,7 @@ function serializeEnvRows() {
       if (row.type === "raw") return row.raw;
       const key = row.key.trim();
       if (!key) return "";
-      return `${key}=${formatEnvValue(row.value)}`;
+      return `${row.prefix ?? ""}${key}=${formatEnvValue(row.value, row.quoteStyle)}`;
     })
     .join("\n");
 }

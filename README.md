@@ -35,6 +35,8 @@ AWS 認証情報はブラウザに渡しません。localhost の Node.js サー
 
 ## クイックスタート
 
+Node.js 22.23.4 を基準に動作確認しています。CI も `.nvmrc` の同じバージョンを使用します。
+
 ```bash
 git clone https://github.com/koyamasoft/s3-file-manager.git
 cd s3-file-manager
@@ -42,6 +44,8 @@ npm ci
 npm run build
 npm run web
 ```
+
+`nvm` を使う場合は、`npm ci` の前に `nvm install` と `nvm use` を実行してください。
 
 起動後、ブラウザで開きます。
 
@@ -380,6 +384,9 @@ npm test
 `npm test` は TypeScript をビルドしてから、Node.js 標準のテストランナーでユニットテストを実行します。
 
 ## リリース時の確認
+
+Dependabot が npm パッケージと GitHub Actions の更新を毎週確認し、更新 PR を作成します。
+更新 PR では CI のテスト結果を確認してからマージしてください。
 
 リリースや公開設定を変更する前に、以下を確認してください。
 
